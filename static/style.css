@@ -1,0 +1,1520 @@
+:root {
+  --bg: #0f1218;
+  --card: #171b24;
+  --text: #e8eaef;
+  --muted: #8b93a7;
+  --accent: #5b8cff;
+  --accent-dim: #3d5fb8;
+  --danger: #e45858;
+  --warn: #e6a23c;
+  --border: #2a3142;
+  --radius: 12px;
+  --page-margin-x: 1.25rem;
+  --layout-col-gap: 2rem;
+  --workdays-sidebar-width: 280px;
+  --scrollbar-size: 10px;
+  --scrollbar-track: #12161f;
+  --scrollbar-thumb: #3a455c;
+  --scrollbar-thumb-hover: #5b8cff;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
+html {
+  background: var(--bg);
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: radial-gradient(1200px 600px at 20% -10%, #1a2440 0%, var(--bg) 55%);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+body.has-active-panel {
+  --active-panel-width: 360px;
+}
+
+.page {
+  margin: 0;
+  max-width: none;
+  padding: 1.5rem var(--page-margin-x) 3rem;
+}
+
+.page-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--active-panel-width);
+  gap: var(--layout-col-gap);
+  align-items: start;
+}
+
+.page-layout--full {
+  display: block;
+}
+
+.page-layout--full .page-layout__main {
+  width: 100%;
+  max-width: none;
+}
+
+.page-layout__main {
+  min-width: 0;
+}
+
+.active-tasks-panel {
+  position: sticky;
+  top: 1.5rem;
+  align-self: start;
+  z-index: 1;
+  width: 100%;
+  max-height: calc(100vh - 3rem);
+  pointer-events: auto;
+}
+
+.active-tasks-panel__inner {
+  pointer-events: auto;
+  max-height: calc(100vh - 3rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  overflow: hidden;
+  margin: 0;
+  padding: 0.55rem 0.6rem;
+  background: rgba(23, 27, 36, 0.96);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.22);
+}
+
+.active-tasks-panel__title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.active-tasks-panel__add {
+  flex: 0 0 auto;
+}
+
+.active-tasks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.active-task-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 1.65rem;
+  border-radius: 6px;
+  background: #12161f;
+}
+
+.active-task-item__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  padding: 0.18rem 0.35rem;
+}
+
+.active-task-item__input::placeholder {
+  color: var(--muted);
+}
+
+.active-task-item__input:hover {
+  border-color: var(--border);
+  background: #0f1218;
+}
+
+.active-task-item__input:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+  background: #0f1218;
+}
+
+.active-task-item__day-form {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.active-task-item__day-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  padding: 0;
+  border: 1px solid var(--accent-dim);
+  border-radius: 5px;
+  background: rgba(91, 140, 255, 0.15);
+  color: var(--accent);
+  font-size: 0.78rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.active-task-item__day-btn:hover {
+  background: rgba(91, 140, 255, 0.28);
+}
+
+.active-tasks-panel__toggle {
+  position: fixed;
+  right: 0.85rem;
+  bottom: 1rem;
+  z-index: 45;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  padding: 0.55rem 0.95rem;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.active-tasks-panel__toggle:hover {
+  border-color: var(--accent-dim);
+}
+
+@media (max-width: 1100px) {
+  .page-layout {
+    display: block;
+  }
+
+  .active-tasks-panel {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    max-height: none;
+    height: min(58vh, 420px);
+    padding: 0;
+    transform: translateY(110%);
+    transition: transform 0.22s ease;
+  }
+
+  body.active-panel-open .active-tasks-panel {
+    transform: translateY(0);
+  }
+
+  .active-tasks-panel__inner {
+    border-radius: var(--radius) var(--radius) 0 0;
+    max-height: 100%;
+    height: 100%;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.35);
+  }
+}
+
+.workdays-layout {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.workdays-sidebar {
+  position: sticky;
+  top: 0.85rem;
+  max-height: calc(100vh - 1.7rem);
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.workdays-main {
+  min-width: 0;
+}
+
+.workdays-shell {
+  display: grid;
+  grid-template-columns: var(--workdays-sidebar-width) minmax(0, 1fr);
+  gap: var(--layout-col-gap);
+  align-items: start;
+}
+
+.workdays-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  align-self: start;
+}
+
+.workdays-actions .workdays-filters {
+  margin-top: 0.15rem;
+}
+
+.workdays-filters-card {
+  margin-bottom: 0;
+}
+
+.card--compact {
+  padding: 0.75rem 0.85rem;
+}
+
+.card-title--sm {
+  font-size: 0.88rem;
+  margin-bottom: 0.55rem;
+}
+
+.stack-form--compact {
+  gap: 0.45rem;
+}
+
+.field--compact {
+  gap: 0.2rem;
+}
+
+.field--compact .field-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+}
+
+.input--compact {
+  padding: 0.28rem 0.45rem;
+  font-size: 0.82rem;
+  min-height: 1.85rem !important;
+  height: auto;
+}
+
+.input--compact.input--day-title {
+  height: 1.85rem;
+  min-height: 1.85rem;
+  max-height: 1.85rem;
+}
+
+.filter-grid--hours {
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.workdays-filters .input--compact {
+  padding: 0.32rem 0.5rem;
+  font-size: 0.84rem;
+}
+
+.workdays-filters input[type="date"].input--compact {
+  min-width: 0;
+  width: 100%;
+}
+
+.workdays-filters select.input--compact {
+  text-overflow: ellipsis;
+  padding-right: 1.5rem;
+}
+
+.filter-chips {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}
+
+.work-day-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.btn--xs {
+  padding: 0.22rem 0.45rem;
+  font-size: 0.72rem;
+}
+
+.btn--danger-text {
+  color: var(--danger);
+  border-color: rgba(228, 88, 88, 0.35);
+}
+
+.btn--danger-text:hover {
+  color: #fff;
+  background: rgba(228, 88, 88, 0.2);
+  border-color: var(--danger);
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 8, 14, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.modal__dialog {
+  position: relative;
+  width: min(100%, 480px);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.15rem 1.2rem;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+}
+
+.modal__close {
+  position: absolute;
+  top: 0.65rem;
+  right: 0.75rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+}
+
+.modal__close:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.modal__title {
+  margin: 0 0 0.85rem;
+  font-size: 1.1rem;
+  font-weight: 650;
+  padding-right: 1.5rem;
+}
+
+.modal__actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+
+.modal__actions--export {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.workdays-actions .btn {
+  width: 100%;
+}
+
+.workdays-content {
+  min-width: 0;
+}
+
+.app-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-nav__heading {
+  margin: 0;
+  font-size: 1.65rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.workdays-list-summary {
+  margin: 0 0 0.85rem;
+}
+
+.app-nav__link {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+
+.app-nav__link:hover {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.app-nav__link.is-active {
+  color: #fff;
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.inline-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.inline-link:hover {
+  text-decoration: underline;
+}
+
+.stack-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: stretch;
+  width: 100%;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.field-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Базовые поля: на всю ширину родителя (карточки) */
+.input,
+textarea.input {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #0f1218;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input::placeholder,
+textarea.input::placeholder {
+  color: #6f7890;
+}
+
+.input:focus,
+textarea.input:focus {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: 1px;
+}
+
+textarea.input {
+  resize: vertical;
+  min-height: 0;
+}
+
+.input:not(textarea):not(.input--day-title) {
+  min-height: 2.25rem;
+}
+
+/* Название рабочего дня — одна строка, длинный текст прокручивается */
+.input--day-title {
+  height: 2.25rem;
+  min-height: 2.25rem;
+  max-height: 2.25rem;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Описание — компактно (~3 строки), не больше ~9rem по высоте; дальше скролл */
+.textarea--day-desc {
+  min-height: 4.5rem;
+  max-height: 9rem;
+  line-height: 1.45;
+  overflow-y: auto;
+}
+
+.small-hint {
+  font-size: 0.85rem;
+  margin: 0 0 0.75rem;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.workdays-sidebar .filter-grid {
+  grid-template-columns: 1fr;
+}
+
+.filter-grid--single {
+  grid-template-columns: 1fr;
+}
+
+.filter-summary {
+  margin-top: 0.25rem;
+}
+
+.note-editor-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.note-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.work-day-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.work-day-card {
+  padding: 0.9rem 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(12, 16, 24, 0.35);
+  margin-bottom: 0.65rem;
+}
+
+.work-day-card__title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  display: inline-block;
+}
+
+.work-day-card__title:hover {
+  color: var(--accent);
+}
+
+.work-day-card__note {
+  margin: 0.35rem 0 0.25rem;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+
+.work-day-card__meta {
+  font-size: 0.88rem;
+  margin-top: 0.45rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.work-day-card__worked {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.28rem 0.6rem;
+  border-radius: 8px;
+  background: linear-gradient(110deg, rgba(91, 140, 255, 0.18), rgba(61, 95, 184, 0.12));
+  border: 1px solid rgba(91, 140, 255, 0.35);
+  box-shadow: 0 0 0 1px rgba(91, 140, 255, 0.08) inset;
+}
+
+.work-day-card__worked-label {
+  font-size: 0.76rem;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.work-day-card__worked-value {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #dce8ff;
+  letter-spacing: 0.01em;
+}
+
+.work-day-card__tasks {
+  font-size: 0.84rem;
+}
+
+.work-day-card__time {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.banner-link {
+  margin-left: auto;
+  text-decoration: none;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  margin: 0 0 0.35rem;
+  font-size: 1.65rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.totals-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1.1rem;
+  min-width: 11rem;
+}
+
+.header-totals-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.header-totals-wrap__export .dropdown-menu {
+  left: auto;
+  right: 0;
+}
+
+.totals-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.totals-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.mono {
+  font-variant-numeric: tabular-nums;
+}
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 0.85rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius);
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--border);
+}
+
+.banner--active {
+  background: linear-gradient(110deg, #1c2740, #1a2030);
+}
+
+.banner--idle {
+  color: var(--muted);
+  background: var(--card);
+}
+
+.banner-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.banner-task {
+  font-weight: 600;
+}
+
+.banner-time {
+  margin-left: auto;
+  font-size: 1.15rem;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.15rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.18);
+}
+
+.card-title {
+  margin: 0 0 0.85rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.report-export {
+  display: flex;
+  align-items: center;
+}
+
+.export-kpi {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.dropdown-menu {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.35rem);
+  min-width: max(100%, 11.5rem);
+  width: max-content;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: linear-gradient(160deg, #141a26, #121722);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  backdrop-filter: blur(2px);
+}
+
+.dropdown-menu[hidden] {
+  display: none;
+}
+
+.dropdown-item {
+  border: none;
+  border-radius: 8px;
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+  white-space: nowrap;
+  background: transparent;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.dropdown-item:hover {
+  background: rgba(91, 140, 255, 0.14);
+}
+
+.btn--export-main {
+  min-width: 10.5rem;
+}
+
+/* Сворачиваемая карточка (напр. метаданные дня) */
+.card--collapsible {
+  padding: 0;
+}
+
+.card--collapsible > .card-summary {
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 1.1rem 1.15rem;
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius);
+}
+
+.card--collapsible > .card-summary:focus {
+  outline: none;
+}
+
+.card--collapsible > .card-summary:focus-visible {
+  outline: 2px solid var(--accent-dim);
+  outline-offset: 2px;
+}
+
+.card--collapsible > .card-summary::-webkit-details-marker {
+  display: none;
+}
+
+.card-summary__chevron {
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-top: 0.35rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.card--collapsible[open] .card-summary__chevron {
+  transform: rotate(45deg);
+  margin-top: 0.25rem;
+}
+
+.card-summary__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.card-summary__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.card-summary__preview {
+  font-size: 14pt;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-summary__note {
+  font-size: 12pt;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-collapsible-body {
+  padding: 0 1.15rem 1.1rem;
+  border-top: 1px solid var(--border);
+}
+
+.card-collapsible-body__danger {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.row-form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  width: 100%;
+}
+
+.row-form--task-add {
+  flex-wrap: nowrap;
+}
+
+.task-add-form {
+  margin-bottom: 1rem;
+}
+
+.task-name-combobox {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.task-name-combobox .input {
+  width: 100%;
+}
+
+.task-name-suggestions {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--surface-elevated, #151b27);
+  border: 1px solid var(--border, #2a3142);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.task-name-suggestions__item {
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.92rem;
+  color: var(--text, #e8eaef);
+}
+
+.task-name-suggestions__item:hover,
+.task-name-suggestions__item.is-active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.row-form--task-add .task-name-combobox .input {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  max-width: none;
+}
+
+.row-form--task-add .btn {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.input--grow {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  max-width: none;
+}
+
+.btn {
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: transform 0.08s ease, filter 0.15s ease, border-color 0.15s ease;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn--primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn--primary:hover {
+  filter: brightness(1.08);
+}
+
+.btn--warning {
+  background: var(--warn);
+  color: #1a1206;
+}
+
+.btn--danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.btn--ghost:hover {
+  color: var(--text);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  filter: grayscale(0.15);
+}
+
+.btn--sm {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.82rem;
+}
+
+.inline-form {
+  display: inline;
+}
+
+.task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.task-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(12, 16, 24, 0.35);
+  margin-bottom: 0.55rem;
+}
+
+.task-row:last-child {
+  margin-bottom: 0;
+}
+
+.task-main {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex: 1 1 12rem;
+}
+
+.task-name {
+  font-weight: 500;
+}
+
+.task-time {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.muted {
+  color: var(--muted);
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .workdays-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filter-grid--single {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --page-margin-x: 0.85rem;
+    --layout-col-gap: 1.25rem;
+  }
+
+  .page {
+    padding: 1.15rem var(--page-margin-x) 2rem;
+  }
+
+  .header {
+    gap: 0.8rem;
+    margin-bottom: 1rem;
+  }
+
+  .title {
+    font-size: 1.4rem;
+  }
+
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-grid--single {
+    grid-template-columns: 1fr;
+  }
+
+  .row-form--task-add {
+    flex-wrap: wrap;
+  }
+
+  .btn--export-main {
+    min-width: 100%;
+  }
+}
+
+/* TO-DO / Kanban */
+.workdays-page-header {
+  margin-bottom: 0.85rem;
+}
+
+.todo-projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.85rem;
+}
+
+.todo-project-card__note {
+  margin: 0 0 0.55rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.todo-project-card__meta {
+  margin: 0 0 0.85rem;
+  font-size: 0.82rem;
+}
+
+.todo-project-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.todo-board-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.page-todo-board {
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.page-todo-board .page {
+  height: 100%;
+  max-height: 100%;
+  padding-top: 1rem;
+  padding-bottom: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.page-todo-board .app-nav {
+  flex: 0 0 auto;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.65rem;
+}
+
+.page-todo-board .page-layout--full {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-todo-board .page-layout__main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.todo-board-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-todo-board .todo-board-header {
+  flex: 0 0 auto;
+  margin-bottom: 0.75rem;
+}
+
+.kanban-board-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.kanban-board {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+  height: 100%;
+  width: 100%;
+  min-width: min(100%, 1400px);
+}
+
+.kanban-column {
+  flex: 1 1 0;
+  min-width: 220px;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(23, 27, 36, 0.88);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.kanban-column.drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(91, 140, 255, 0.35);
+}
+
+.kanban-column__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding: 0.65rem 0.7rem 0.55rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.18);
+}
+
+.kanban-column__title {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+  text-transform: uppercase;
+  color: #1a1f2a;
+}
+
+.kanban-column__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  flex: 0 0 auto;
+}
+
+.kanban-column__count {
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+  color: #1a1f2a;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kanban-column--waiting .kanban-column__header {
+  background: #f2d7b8;
+}
+
+.kanban-column--decide .kanban-column__header {
+  background: #d7d7d7;
+}
+
+.kanban-column--planned .kanban-column__header {
+  background: #f0a14a;
+}
+
+.kanban-column--in_progress .kanban-column__header {
+  background: #f3e08a;
+}
+
+.kanban-column--done .kanban-column__header {
+  background: #9ec9ef;
+}
+
+.kanban-column--approved .kanban-column__header {
+  background: #7dca7d;
+}
+
+.kanban-column__cards {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.kanban-card {
+  position: relative;
+  background: #12161f;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.6rem 0.45rem;
+  cursor: grab;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.kanban-card:hover {
+  border-color: #3a455c;
+}
+
+.kanban-card.is-dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+.kanban-card__title {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  padding-right: 2.4rem;
+}
+
+.kanban-card__note {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.kanban-card__actions {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  display: flex;
+  gap: 0.1rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.kanban-card:hover .kanban-card__actions,
+.kanban-card:focus-within .kanban-card__actions {
+  opacity: 1;
+}
+
+.kanban-icon-btn {
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: #1a1f2a;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.kanban-column__header .kanban-icon-btn {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.kanban-icon-btn--sm {
+  width: 1.3rem;
+  height: 1.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: transparent;
+}
+
+.kanban-icon-btn:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.kanban-icon-btn--sm:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.kanban-empty {
+  margin: 0.25rem 0 0;
+  padding: 0.85rem 0.5rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.kanban-drop-indicator {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  margin: 0.05rem 0;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 1100px) {
+  .kanban-board {
+    width: max-content;
+    min-width: 100%;
+  }
+
+  .kanban-column {
+    flex: 0 0 250px;
+    width: 250px;
+    min-width: 250px;
+  }
+}

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}TO-DO — проекты{% endblock %}
+
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">TO-DO</h1>
+    <p class="subtitle muted">Канбан по проектам</p>
+  </div>
+  <button type="button" class="btn btn--primary" data-open-modal="modal-new-project">Новый проект</button>
+</header>
+
+{% if projects %}
+<div class="todo-projects-grid">
+  {% for p in projects %}
+  <article class="card todo-project-card">
+    <h2 class="card-title">
+      <a href="{{ url_for('todo_project_view', project_id=p.id) }}" class="inline-link">{{ p.title }}</a>
+    </h2>
+    {% if p.note %}
+    <p class="todo-project-card__note">{{ p.note }}</p>
+    {% endif %}
+    <p class="muted todo-project-card__meta">
+      {{ p.column_count }} кол. · {{ p.card_count }} задач · {{ fmt_created(p.created_at) }}
+    </p>
+    <div class="todo-project-card__actions">
+      <a href="{{ url_for('todo_project_view', project_id=p.id) }}" class="btn btn--primary btn--sm">Открыть</a>
+      <form method="post" action="{{ url_for('todo_delete_project', project_id=p.id) }}" onsubmit="return confirm('Удалить проект «{{ p.title }}» и все задачи?');">
+        <button type="submit" class="btn btn--danger btn--sm">Удалить</button>
+      </form>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<section class="card">
+  <p class="muted" style="margin:0">Пока нет проектов. Создайте первый.</p>
+</section>
+{% endif %}
+
+<div class="modal" id="modal-new-project" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog" role="dialog" aria-labelledby="modal-new-project-title">
+    <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">&times;</button>
+    <h2 class="modal__title" id="modal-new-project-title">Новый проект</h2>
+    <form method="post" action="{{ url_for('todo_create_project') }}" class="stack-form">
+      <label class="field">
+        <span class="field-label">Название</span>
+        <input type="text" name="title" class="input" required autofocus placeholder="Название проекта">
+      </label>
+      <label class="field">
+        <span class="field-label">Заметка</span>
+        <textarea name="note" class="input" rows="2" placeholder="Необязательно"></textarea>
+      </label>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-close-modal>Отмена</button>
+        <button type="submit" class="btn btn--primary">Создать</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    function openModal(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.hidden = false;
+      document.body.classList.add('modal-open');
+    }
+    function closeModal(el) {
+      const modal = el.closest ? el.closest('.modal') : el;
+      if (!modal) return;
+      modal.hidden = true;
+      if (!document.querySelector('.modal:not([hidden])')) {
+        document.body.classList.remove('modal-open');
+      }
+    }
+    document.querySelectorAll('[data-open-modal]').forEach((btn) => {
+      btn.addEventListener('click', () => openModal(btn.dataset.openModal));
+    });
+    document.querySelectorAll('[data-close-modal]').forEach((el) => {
+      el.addEventListener('click', () => closeModal(el));
+    });
+  })();
+</script>
+{% endblock %}

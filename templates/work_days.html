@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+
+{% block title %}Рабочие дни{% endblock %}
+
+{% block body %}
+<header class="header workdays-page-header">
+  <div>
+    <h1 class="title">Рабочие дни</h1>
+  </div>
+</header>
+<div class="workdays-shell">
+  <aside class="workdays-actions">
+    <button type="button" class="btn btn--ghost" data-open-modal="modal-new-day">Новый день</button>
+    <button type="button" class="btn btn--ghost" data-open-modal="modal-export">Экспорт отчёта</button>
+    <div class="workdays-filters">
+      <section class="card card--compact workdays-filters-card">
+        <h2 class="card-title card-title--sm">Фильтры</h2>
+        <form method="get" action="{{ url_for('work_days_home') }}" class="stack-form stack-form--compact">
+          <label class="field field--compact">
+            <span class="field-label">Поиск</span>
+            <input type="text" name="q" value="{{ filters.q }}" placeholder="Название, итоги…" class="input input--compact">
+          </label>
+          <label class="field field--compact">
+            <span class="field-label">Дата с</span>
+            <input type="date" name="date_from" value="{{ filters.date_from }}" class="input input--compact">
+          </label>
+          <label class="field field--compact">
+            <span class="field-label">Дата по</span>
+            <input type="date" name="date_to" value="{{ filters.date_to }}" class="input input--compact">
+          </label>
+          <div class="filter-grid filter-grid--hours">
+            <label class="field field--compact">
+              <span class="field-label">Часов от</span>
+              <input type="number" name="min_hours" min="0" step="0.25" value="{{ filters.min_hours }}" class="input input--compact" placeholder="0">
+            </label>
+            <label class="field field--compact">
+              <span class="field-label">Часов до</span>
+              <input type="number" name="max_hours" min="0" step="0.25" value="{{ filters.max_hours }}" class="input input--compact" placeholder="8">
+            </label>
+          </div>
+          <label class="field field--compact">
+            <span class="field-label">Итоги</span>
+            <select name="has_note" class="input input--compact">
+              <option value="any" {% if filters.has_note == 'any' %}selected{% endif %}>Любые</option>
+              <option value="yes" {% if filters.has_note == 'yes' %}selected{% endif %}>С итогами</option>
+              <option value="no" {% if filters.has_note == 'no' %}selected{% endif %}>Без итогов</option>
+            </select>
+          </label>
+          <label class="field field--compact">
+            <span class="field-label">Сортировка</span>
+            <select name="sort_by" class="input input--compact">
+              <option value="day_date" {% if filters.sort_by == 'day_date' or filters.sort_by == 'created_at' %}selected{% endif %}>По дате</option>
+              <option value="title" {% if filters.sort_by == 'title' %}selected{% endif %}>По названию</option>
+              <option value="seconds" {% if filters.sort_by == 'seconds' %}selected{% endif %}>По времени</option>
+              <option value="task_count" {% if filters.sort_by == 'task_count' %}selected{% endif %}>По задачам</option>
+              <option value="session_count" {% if filters.sort_by == 'session_count' %}selected{% endif %}>По сессиям</option>
+            </select>
+          </label>
+          <label class="field field--compact">
+            <span class="field-label">Порядок</span>
+            <select name="sort_dir" class="input input--compact">
+              <option value="desc" {% if filters.sort_dir == 'desc' %}selected{% endif %}>По убыванию</option>
+              <option value="asc" {% if filters.sort_dir == 'asc' %}selected{% endif %}>По возрастанию</option>
+            </select>
+          </label>
+          <div class="filter-chips">
+            <button type="button" class="btn btn--ghost btn--xs js-range" data-range="today">Сегодня</button>
+            <button type="button" class="btn btn--ghost btn--xs js-range" data-range="7d">7д</button>
+            <button type="button" class="btn btn--ghost btn--xs js-range" data-range="30d">30д</button>
+          </div>
+          <div class="filter-actions">
+            <button type="submit" class="btn btn--primary btn--sm">Применить</button>
+            <a href="{{ url_for('work_days_home') }}" class="btn btn--ghost btn--sm">Сброс</a>
+          </div>
+        </form>
+      </section>
+    </div>
+  </aside>
+
+  <main class="workdays-content">
+    {% if active %}
+    <section class="banner banner--active">
+      <span class="banner-label">Сейчас идёт учёт</span>
+      <strong class="banner-task">{{ active.task_name }}</strong>
+      <span class="muted">· день «{{ active.work_day_title }}»</span>
+      <a href="{{ url_for('work_day_view', work_day_id=active.work_day_id) }}" class="btn btn--primary btn--sm banner-link">Открыть этот день</a>
+    </section>
+    {% endif %}
+
+    <section class="card">
+      <p class="small-hint muted filter-summary workdays-list-summary">Найдено: <strong>{{ days|length }}</strong> · <strong>{{ fmt_worked(filtered_total_seconds) }}</strong></p>
+      {% if not days %}
+      <p class="muted">По текущим фильтрам ничего не найдено.</p>
+      {% else %}
+      <ul class="work-day-list">
+        {% for d in days %}
+        <li class="work-day-card">
+          <div class="work-day-card__head">
+            <a href="{{ url_for('work_day_view', work_day_id=d.id) }}" class="work-day-card__title">{{ d.title }}</a>
+            <form method="post" action="{{ url_for('work_day_delete', work_day_id=d.id) }}" class="inline-form" onsubmit="return confirm('Удалить этот рабочий день и всё учтённое в нём время?');">
+              <button type="submit" class="btn btn--ghost btn--sm btn--danger-text">Удалить</button>
+            </form>
+          </div>
+          {% if d.note %}
+          <p class="work-day-card__note muted">{{ d.note }}</p>
+          {% endif %}
+          <div class="work-day-card__meta">
+            <span class="work-day-card__worked">
+              <span class="work-day-card__worked-label">отработано</span>
+              <span class="work-day-card__worked-value mono">{{ fmt_worked_value(d.seconds) }}</span>
+            </span>
+            <span class="muted work-day-card__tasks">{{ d.task_count }} задач</span>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+  </main>
+</div>
+
+<div class="modal" id="modal-new-day" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog" role="dialog" aria-labelledby="modal-new-day-title">
+    <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">×</button>
+    <h2 class="modal__title" id="modal-new-day-title">Новый рабочий день</h2>
+    <form method="post" action="{{ url_for('create_work_day') }}" class="stack-form">
+      <label class="field">
+        <span class="field-label">Дата</span>
+        <input type="date" name="day_date" required class="input input--compact" value="{{ default_day_date }}">
+      </label>
+      <label class="field">
+        <span class="field-label">Итоги работы</span>
+        <div class="note-editor-wrap">
+          <div class="note-toolbar">
+            <button type="button" class="btn btn--ghost btn--sm js-note-bullet">• Маркер</button>
+          </div>
+          <textarea name="note" rows="3" class="input textarea textarea--day-desc js-note-editor"></textarea>
+        </div>
+      </label>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-close-modal>Отмена</button>
+        <button type="submit" class="btn btn--primary">Создать</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal" id="modal-export" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog" role="dialog" aria-labelledby="modal-export-title">
+    <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">×</button>
+    <h2 class="modal__title" id="modal-export-title">Экспорт выборки</h2>
+    <p class="small-hint muted export-kpi">
+      <span>Дней: <strong>{{ days|length }}</strong></span>
+      <span><strong>{{ fmt_worked(filtered_total_seconds) }}</strong></span>
+    </p>
+    <p class="small-hint muted">Итоги и задачи по каждому дню из текущих фильтров.</p>
+    <div class="modal__actions modal__actions--export">
+      <button type="button" class="btn btn--primary" id="multi-export-png">Скачать PNG</button>
+      <a
+        href="{{ url_for('export_multi_report_txt', q=filters.q, date_from=filters.date_from, date_to=filters.date_to, min_hours=filters.min_hours, max_hours=filters.max_hours, has_note=filters.has_note, sort_by=filters.sort_by, sort_dir=filters.sort_dir) }}"
+        class="btn btn--ghost"
+      >
+        Скачать TXT
+      </a>
+      <button type="button" class="btn btn--ghost" id="multi-export-copy-txt">Копировать TXT</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function insertBullet(textarea) {
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const value = textarea.value;
+    const lineStart = value.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+    const prefix = value.slice(lineStart, start).trim() ? '\n• ' : '• ';
+    const next = value.slice(0, start) + prefix + value.slice(end);
+    textarea.value = next;
+    const pos = start + prefix.length;
+    textarea.focus();
+    textarea.setSelectionRange(pos, pos);
+  }
+
+  document.querySelectorAll('.js-note-bullet').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const wrap = btn.closest('.note-editor-wrap');
+      const textarea = wrap ? wrap.querySelector('.js-note-editor') : null;
+      insertBullet(textarea);
+    });
+  });
+
+  function openModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.hidden = false;
+    document.body.classList.add('modal-open');
+    const focusable = el.querySelector('input, textarea, button, select, a');
+    if (focusable) focusable.focus();
+  }
+
+  function closeModal(el) {
+    if (!el) return;
+    el.hidden = true;
+    if (!document.querySelector('.modal:not([hidden])')) {
+      document.body.classList.remove('modal-open');
+    }
+  }
+
+  document.querySelectorAll('[data-open-modal]').forEach((btn) => {
+    btn.addEventListener('click', () => openModal(btn.dataset.openModal));
+  });
+
+  document.querySelectorAll('[data-close-modal]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const modal = btn.closest('.modal');
+      closeModal(modal);
+    });
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    document.querySelectorAll('.modal:not([hidden])').forEach((modal) => closeModal(modal));
+  });
+
+  function toDateInputValue(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  document.querySelectorAll('.js-range').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const from = document.querySelector('input[name="date_from"]');
+      const to = document.querySelector('input[name="date_to"]');
+      if (!from || !to) return;
+      const now = new Date();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const start = new Date(end);
+      const range = btn.dataset.range;
+      if (range === '7d') start.setDate(start.getDate() - 6);
+      else if (range === '30d') start.setDate(start.getDate() - 29);
+      from.value = toDateInputValue(start);
+      to.value = toDateInputValue(end);
+    });
+  });
+
+  const multiExportPng = document.getElementById('multi-export-png');
+  const multiExportCopyTxt = document.getElementById('multi-export-copy-txt');
+  const multiReportDataUrl = {{ url_for('multi_report_data', q=filters.q, date_from=filters.date_from, date_to=filters.date_to, min_hours=filters.min_hours, max_hours=filters.max_hours, has_note=filters.has_note, sort_by=filters.sort_by, sort_dir=filters.sort_dir) | tojson }};
+  const multiReportTxtUrl = {{ url_for('export_multi_report_txt', q=filters.q, date_from=filters.date_from, date_to=filters.date_to, min_hours=filters.min_hours, max_hours=filters.max_hours, has_note=filters.has_note, sort_by=filters.sort_by, sort_dir=filters.sort_dir) | tojson }};
+
+  function safeFileStem(raw) {
+    return (raw || 'report').toLowerCase().replace(/[^a-zа-я0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'report';
+  }
+
+  function saveDataUrl(filename, dataUrl) {
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  async function copyTextToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    if (!ok) throw new Error('copy failed');
+  }
+
+  async function exportMultiCopyTxt() {
+    if (!multiExportCopyTxt) return;
+    const prev = multiExportCopyTxt.textContent;
+    multiExportCopyTxt.disabled = true;
+    multiExportCopyTxt.textContent = 'Копируем…';
+    try {
+      const res = await fetch(multiReportTxtUrl, { headers: { Accept: 'text/plain; charset=utf-8' } });
+      if (!res.ok) throw new Error('Не удалось получить отчёт');
+      await copyTextToClipboard(await res.text());
+      multiExportCopyTxt.textContent = 'Скопировано!';
+      setTimeout(() => closeModal(document.getElementById('modal-export')), 600);
+    } catch (_) {
+      alert('Не удалось скопировать отчёт в буфер обмена');
+      multiExportCopyTxt.textContent = prev;
+    } finally {
+      multiExportCopyTxt.disabled = false;
+      setTimeout(() => {
+        multiExportCopyTxt.textContent = prev;
+      }, 1800);
+    }
+  }
+
+  async function exportMultiPng() {
+    if (!multiExportPng) return;
+    multiExportPng.disabled = true;
+    multiExportPng.textContent = 'Готовим PNG…';
+    try {
+      const res = await fetch(multiReportDataUrl, { headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error('Не удалось получить данные');
+      const report = await res.json();
+      const width = 1200;
+      const padding = 56;
+      const rowHeight = 30;
+      const count = (report.days || []).length;
+      const extraHeight = (report.days || []).reduce((acc, day) => {
+        const taskLines = Math.min(4, (day.tasks || []).length);
+        const noteLines = day.note ? Math.ceil(day.note.length / 80) : 0;
+        return acc + taskLines * 22 + noteLines * 18 + 24;
+      }, 0);
+      const height = Math.max(560, 240 + count * rowHeight + extraHeight + 110);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0f1218';
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.fillStyle = '#e8eaef';
+      ctx.font = '700 40px "Segoe UI", sans-serif';
+      ctx.fillText('Отчёт по нескольким рабочим дням', padding, 70);
+
+      ctx.fillStyle = '#8b93a7';
+      ctx.font = '500 20px "Segoe UI", sans-serif';
+      ctx.fillText(`Дней: ${report.summary.days_count} · Всего: ${report.summary.total_duration}`, padding, 108);
+      ctx.fillText(`Задач: ${report.summary.task_count} · Сессий: ${report.summary.session_count}`, padding, 138);
+
+      let y = 180;
+      ctx.font = '400 17px "Segoe UI", sans-serif';
+      for (const day of (report.days || [])) {
+        ctx.fillStyle = '#151b27';
+        ctx.fillRect(padding, y - 24, width - padding * 2, 34);
+        ctx.fillStyle = '#e8eaef';
+        ctx.fillText(day.title, padding, y);
+        ctx.fillStyle = '#d4d8e2';
+        ctx.fillText(day.day_local || '', width - padding - 230, y);
+        y += 24;
+        ctx.fillStyle = '#9faccc';
+        ctx.fillText(
+          `Время: ${day.formatted_duration || ''} · задач: ${day.task_count} (решено: ${day.resolved_tasks_count || 0}) · сессий: ${day.session_count}`,
+          padding, y
+        );
+        y += 24;
+        if (day.note) {
+          ctx.fillStyle = '#cfd8ef';
+          const note = day.note.length > 170 ? day.note.slice(0, 170) + '…' : day.note;
+          ctx.fillText(`Итоги: ${note}`, padding, y);
+          y += 22;
+        }
+        const tasks = (day.tasks || []).slice(0, 4);
+        if (tasks.length) {
+          ctx.fillStyle = '#8b93a7';
+          ctx.fillText('Задачи:', padding, y);
+          y += 20;
+          for (const t of tasks) {
+            ctx.fillStyle = '#d4d8e2';
+            ctx.fillText(`• ${t.name} — ${t.duration}`, padding + 14, y);
+            y += 20;
+          }
+        }
+        y += 12;
+        ctx.fillStyle = '#2a3142';
+        ctx.fillRect(padding, y, width - padding * 2, 1);
+        y += rowHeight;
+      }
+
+      saveDataUrl(safeFileStem(`multi_${report.summary.days_count}_days`) + '.png', canvas.toDataURL('image/png'));
+      closeModal(document.getElementById('modal-export'));
+    } catch (_) {
+      alert('Не удалось сохранить PNG-отчёт');
+    } finally {
+      if (multiExportPng) {
+        multiExportPng.disabled = false;
+        multiExportPng.textContent = 'Скачать PNG';
+      }
+    }
+  }
+
+  if (multiExportPng) {
+    multiExportPng.addEventListener('click', exportMultiPng);
+  }
+
+  if (multiExportCopyTxt) {
+    multiExportCopyTxt.addEventListener('click', exportMultiCopyTxt);
+  }
+</script>
+{% endblock %}

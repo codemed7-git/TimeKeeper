@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Учёт времени{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+{% set ep = request.endpoint or '' %}
+{% set is_todo = ep.startswith('todo') %}
+{% set is_todo_board = ep == 'todo_project_view' %}
+<body class="{% if not is_todo %}has-active-panel{% endif %}{% if is_todo %} page-todo{% endif %}{% if is_todo_board %} page-todo-board{% endif %}">
+  <div class="page">
+    <nav class="app-nav" aria-label="Разделы">
+      <a
+        href="{% if is_todo and nav_active_work_day_id %}{{ url_for('work_day_view', work_day_id=nav_active_work_day_id) }}{% else %}{{ url_for('work_days_home') }}{% endif %}"
+        class="app-nav__link{% if not is_todo %} is-active{% endif %}"
+      >Рабочие дни</a>
+      <a
+        href="{{ url_for('todo_home') }}"
+        class="app-nav__link{% if is_todo %} is-active{% endif %}"
+      >TO-DO</a>
+      {% block app_nav %}{% endblock %}
+    </nav>
+    <div class="page-layout{% if is_todo %} page-layout--full{% endif %}">
+      <div class="page-layout__main">
+        {% block body %}{% endblock %}
+      </div>
+      {% if not is_todo %}
+      {% include "_active_tasks_panel.html" %}
+      {% endif %}
+    </div>
+  </div>
+  <script>
+    (function () {
+      const panel = document.getElementById('active-tasks-panel');
+      const toggle = document.getElementById('active-tasks-toggle');
+      if (!panel) return;
+
+      function setPanelOpen(open) {
+        document.body.classList.toggle('active-panel-open', open);
+        if (toggle) {
+          toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+      }
+
+      if (toggle) {
+        const mq = window.matchMedia('(max-width: 1100px)');
+        function syncToggle() {
+          const mobile = mq.matches;
+          toggle.hidden = !mobile;
+          if (!mobile) {
+            setPanelOpen(false);
+          }
+        }
+        syncToggle();
+        mq.addEventListener('change', syncToggle);
+        toggle.addEventListener('click', () => {
+          setPanelOpen(!document.body.classList.contains('active-panel-open'));
+        });
+        document.addEventListener('click', (event) => {
+          if (!mq.matches || !document.body.classList.contains('active-panel-open')) return;
+          if (panel.contains(event.target) || toggle.contains(event.target)) return;
+          setPanelOpen(false);
+        });
+      }
+
+      document.querySelectorAll('.js-active-task-input').forEach((input) => {
+        const item = input.closest('.active-task-item');
+        const updateUrl = input.dataset.updateUrl;
+        const deleteUrl = input.dataset.deleteUrl;
+        if (!updateUrl || !deleteUrl) return;
+
+        input.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            input.blur();
+          }
+        });
+
+        input.addEventListener('blur', async () => {
+          const name = input.value.trim();
+          const original = (input.dataset.original || '').trim();
+          if (name === original) return;
+
+          const body = new FormData();
+          body.append('name', name);
+
+          try {
+            if (!name) {
+              const res = await fetch(deleteUrl, { method: 'POST', body });
+              if (!res.ok) throw new Error('delete failed');
+              if (item) item.remove();
+              return;
+            }
+            const res = await fetch(updateUrl, { method: 'POST', body });
+            if (!res.ok) throw new Error('update failed');
+            input.dataset.original = name;
+            input.value = name;
+          } catch (_) {
+            window.location.reload();
+          }
+        });
+      });
+    })();
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.title }} — TO-DO{% endblock %}
+
+{% block body %}
+<div class="todo-board-shell">
+<header class="header todo-board-header">
+  <div>
+    <h1 class="title">{{ project.title }}</h1>
+    <p class="subtitle">
+      <a href="{{ url_for('todo_home') }}" class="inline-link">← Все проекты</a>
+      <span class="muted"> · {{ fmt_created(project.created_at) }}</span>
+    </p>
+  </div>
+  <div class="todo-board-header__actions">
+    <button type="button" class="btn btn--ghost btn--sm" data-open-modal="modal-edit-project">Переименовать</button>
+    <form method="post" action="{{ url_for('todo_delete_project', project_id=project.id) }}" onsubmit="return confirm('Удалить проект «{{ project.title }}» и все задачи?');">
+      <button type="submit" class="btn btn--danger btn--sm">Удалить</button>
+    </form>
+  </div>
+</header>
+
+<div class="kanban-board-wrapper">
+  <div class="kanban-board" id="kanban-board">
+    {% for column in columns %}
+    <section class="kanban-column kanban-column--{{ column.color_key }}" data-column-id="{{ column.id }}">
+      <div class="kanban-column__header">
+        <h2 class="kanban-column__title">{{ column.title }}</h2>
+        <div class="kanban-column__meta">
+          <span class="kanban-column__count">{{ column.cards|length }}</span>
+          <button
+            type="button"
+            class="kanban-icon-btn"
+            title="Добавить задачу"
+            data-open-modal="modal-new-card"
+            data-column-id="{{ column.id }}"
+          >+</button>
+        </div>
+      </div>
+      <div class="kanban-column__cards" data-drop-zone>
+        {% for card in column.cards %}
+        <article
+          class="kanban-card"
+          draggable="true"
+          data-card-id="{{ card.id }}"
+          data-title="{{ card.title|e }}"
+          data-note="{{ (card.note or '')|e }}"
+        >
+          <p class="kanban-card__title">{{ card.title }}</p>
+          {% if card.note %}
+          <p class="kanban-card__note">{{ card.note }}</p>
+          {% endif %}
+          <div class="kanban-card__actions">
+            <button type="button" class="kanban-icon-btn kanban-icon-btn--sm js-edit-card" title="Редактировать">✎</button>
+            <form method="post" action="{{ url_for('todo_delete_card', card_id=card.id) }}" onsubmit="return confirm('Удалить задачу?');">
+              <button type="submit" class="kanban-icon-btn kanban-icon-btn--sm" title="Удалить">×</button>
+            </form>
+          </div>
+        </article>
+        {% endfor %}
+        <div class="kanban-empty"{% if column.cards %} hidden{% endif %}>Перетащите задачу сюда</div>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</div>
+</div>
+
+<div class="modal" id="modal-new-card" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog" role="dialog" aria-labelledby="modal-new-card-title">
+    <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">&times;</button>
+    <h2 class="modal__title" id="modal-new-card-title">Новая задача</h2>
+    <form method="post" id="form-new-card" class="stack-form" action="">
+      <label class="field">
+        <span class="field-label">Название</span>
+        <input type="text" name="title" class="input" required>
+      </label>
+      <label class="field">
+        <span class="field-label">Заметка</span>
+        <textarea name="note" class="input" rows="3"></textarea>
+      </label>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-close-modal>Отмена</button>
+        <button type="submit" class="btn btn--primary">Добавить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal" id="modal-edit-card" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog" role="dialog" aria-labelledby="modal-edit-card-title">
+    <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">&times;</button>
+    <h2 class="modal__title" id="modal-edit-card-title">Редактировать задачу</h2>
+    <form method="post" id="form-edit-card" class="stack-form" action="">
+      <label class="field">
+        <span class="field-label">Название</span>
+        <input type="text" name="title" id="edit-card-title" class="input" required>
+      </label>
+      <label class="field">
+        <span class="field-label">Заметка</span>
+        <textarea name="note" id="edit-card-note" class="input" rows="3"></textarea>
+      </label>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-close-modal>Отмена</button>
+        <button type="submit" class="btn btn--primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal" id="modal-edit-project" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog" role="dialog" aria-labelledby="modal-edit-project-title">
+    <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">&times;</button>
+    <h2 class="modal__title" id="modal-edit-project-title">Проект</h2>
+    <form method="post" action="{{ url_for('todo_update_project', project_id=project.id) }}" class="stack-form">
+      <label class="field">
+        <span class="field-label">Название</span>
+        <input type="text" name="title" class="input" value="{{ project.title }}" required>
+      </label>
+      <label class="field">
+        <span class="field-label">Заметка</span>
+        <textarea name="note" class="input" rows="2">{{ project.note }}</textarea>
+      </label>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-close-modal>Отмена</button>
+        <button type="submit" class="btn btn--primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.TODO_URLS = {
+    moveCard: {{ url_for('todo_move_card')|tojson }},
+    createCard: {{ url_for('todo_create_card', column_id=111111)|tojson }}.replace('111111', '__ID__'),
+    updateCard: {{ url_for('todo_update_card', card_id=111111)|tojson }}.replace('111111', '__ID__'),
+  };
+</script>
+<script src="{{ url_for('static', filename='todo.js') }}"></script>
+{% endblock %}

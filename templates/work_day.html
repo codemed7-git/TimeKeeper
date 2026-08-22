@@ -1,0 +1,560 @@
+{% extends "base.html" %}
+
+{% block title %}{{ wd.title }} — рабочий день{% endblock %}
+
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">{{ wd.title }}</h1>
+    <p class="subtitle">
+      <a href="{{ url_for('work_days_home') }}" class="inline-link">← Все рабочие дни</a>
+    </p>
+  </div>
+  <div class="header-totals-wrap">
+    <div class="dropdown header-totals-wrap__export" id="report-dropdown">
+      <button
+        type="button"
+        class="btn btn--ghost btn--sm"
+        id="export-menu-toggle"
+        aria-haspopup="true"
+        aria-expanded="false"
+        title="Экспорт отчёта"
+      >
+        Экспорт отчёта ▾
+      </button>
+      <div class="dropdown-menu" id="export-menu" role="menu" hidden>
+        <button type="button" class="dropdown-item" id="export-png" role="menuitem">PNG</button>
+        <a href="{{ url_for('export_report_txt', work_day_id=wd.id) }}" class="dropdown-item" role="menuitem">TXT</a>
+        <button type="button" class="dropdown-item" id="export-copy-txt" role="menuitem">Копировать TXT</button>
+      </div>
+    </div>
+    <div class="totals-card">
+      <div class="totals-label">Время за этот рабочий день</div>
+      <div class="totals-value mono" id="day-total">{{ fmt(day_total_seconds) }}</div>
+    </div>
+  </div>
+</header>
+
+<details class="card card--collapsible" id="day-meta">
+  <summary class="card-summary">
+    <span class="card-summary__chevron" aria-hidden="true"></span>
+    <span class="card-summary__text">
+      <span class="card-summary__label">Дата и итоги</span>
+      <span class="card-summary__preview" title="{{ wd.title }}">{{ wd.title }}</span>
+      {% if wd.note %}
+      <span class="card-summary__note muted" title="{{ wd.note|replace('\n', ' ') }}">{{ wd.note|replace('\n', ' ')|truncate(300, True) }}</span>
+      {% endif %}
+    </span>
+  </summary>
+  <div class="card-collapsible-body">
+    <form method="post" action="{{ url_for('work_day_update', work_day_id=wd.id) }}" class="stack-form">
+      <label class="field">
+        <span class="field-label">Дата рабочего дня</span>
+        <input
+          type="date"
+          name="day_date"
+          required
+          class="input input--compact"
+          value="{{ wd.day_date or '' }}"
+        >
+        <span class="small-hint muted">Название: {{ wd.title }}</span>
+      </label>
+      <label class="field">
+        <span class="field-label">Итоги работы</span>
+        <div class="note-editor-wrap">
+          <div class="note-toolbar">
+            <button type="button" class="btn btn--ghost btn--sm js-note-bullet">• Маркер</button>
+          </div>
+          <textarea name="note" rows="5" class="input textarea textarea--day-desc js-note-editor">{{ wd.note or '' }}</textarea>
+        </div>
+      </label>
+      <label class="field">
+        <span class="field-label">Дальнейшее направление работы (активные задачи)</span>
+        <textarea name="next_steps" rows="3" class="input textarea textarea--day-desc" placeholder="Что планируется делать дальше">{{ wd.next_steps or '' }}</textarea>
+      </label>
+      <label class="field">
+        <span class="field-label">Вопросы|проблемы</span>
+        <textarea name="questions" rows="2" class="input textarea textarea--day-desc" placeholder="-">{{ wd.questions or '' }}</textarea>
+      </label>
+      <button type="submit" class="btn btn--primary">Сохранить</button>
+    </form>
+    <form method="post" action="{{ url_for('work_day_delete', work_day_id=wd.id) }}" class="stack-form card-collapsible-body__danger" onsubmit="return confirm('Удалить этот рабочий день и всё учтённое в нём время?');">
+      <button type="submit" class="btn btn--ghost">Удалить этот рабочий день</button>
+    </form>
+  </div>
+</details>
+
+{% if active and not timer_on_this_day %}
+<section class="banner banner--idle">
+  <span>Таймер сейчас в другом дне: «<strong>{{ active.work_day_title }}</strong>» — задача «{{ active.task_name }}»</span>
+  <a href="{{ url_for('work_day_view', work_day_id=active.work_day_id) }}" class="btn btn--primary btn--sm">Перейти</a>
+</section>
+{% endif %}
+
+{% if timer_on_this_day and active %}
+<section class="banner banner--active" id="active-banner">
+  <span class="banner-label">Сейчас</span>
+  <strong class="banner-task" id="active-name">{{ active.task_name }}</strong>
+  <span class="banner-time mono" id="active-elapsed" data-started="{{ active.started_at }}">0:00</span>
+  <form method="post" action="{{ url_for('stop_timer', work_day_id=wd.id) }}" class="inline-form">
+    <button type="submit" class="btn btn--danger">Стоп</button>
+  </form>
+</section>
+{% elif not active %}
+<section class="banner banner--idle" id="active-banner">
+  <span>Таймер остановлен — выберите задачу и нажмите «Старт»</span>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2 class="card-title">Задачи этого рабочего дня</h2>
+  <p class="small-hint muted">Или перенесите из активных задач справа (→).</p>
+  <form method="post" action="{{ url_for('create_task', work_day_id=wd.id) }}" class="row-form row-form--task-add task-add-form">
+    <div class="task-name-combobox input--grow">
+      <input
+        type="text"
+        name="name"
+        id="task-name-input"
+        placeholder="Название задачи"
+        required
+        maxlength="200"
+        class="input"
+        autocomplete="off"
+        role="combobox"
+        aria-expanded="false"
+        aria-controls="task-name-suggestions"
+        aria-autocomplete="list"
+      >
+      <ul class="task-name-suggestions" id="task-name-suggestions" role="listbox" hidden></ul>
+    </div>
+    <button type="submit" class="btn btn--primary">Добавить задачу</button>
+  </form>
+  {% if not tasks %}
+  <p class="muted">Пока нет задач — добавьте первую формой выше, затем нажмите «Старт».</p>
+  {% else %}
+  <ul class="task-list">
+    {% for t in tasks %}
+    <li class="task-row" data-task-id="{{ t.id }}">
+      <div class="task-main">
+        <span class="task-name">{{ t.name }}</span>
+        <span class="task-time mono" id="task-time-{{ t.id }}">{{ fmt(t.seconds) }}</span>
+      </div>
+      <div class="task-actions">
+        {% if active and active.task_id == t.id and timer_on_this_day %}
+        <form method="post" action="{{ url_for('stop_task', work_day_id=wd.id, task_id=t.id) }}" class="inline-form">
+          <button type="submit" class="btn btn--warning">Пауза</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('start_task', work_day_id=wd.id, task_id=t.id) }}" class="inline-form">
+          <button type="submit" class="btn btn--primary" {% if active and timer_on_this_day and active.task_id != t.id %}disabled title="Сначала нажмите «Пауза» у текущей задачи"{% endif %}>Старт</button>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ url_for('delete_task', work_day_id=wd.id, task_id=t.id) }}" class="inline-form" onsubmit="return confirm('Удалить задачу и сессии по ней в этом дне?');">
+          <button type="submit" class="btn btn--ghost">Удалить</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const workDayId = {{ wd.id }};
+  const apiUrl = {{ url_for('api_state', work_day_id=wd.id) | tojson }};
+  const reportDataUrl = {{ url_for('report_data', work_day_id=wd.id) | tojson }};
+  const reportTxtUrl = {{ url_for('export_report_txt', work_day_id=wd.id) | tojson }};
+
+  function parseIso(s) {
+    if (!s) return null;
+    return new Date(s);
+  }
+  function formatSeconds(sec) {
+    const s = Math.max(0, Math.floor(sec + 0.5));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const r = s % 60;
+    if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0');
+    return m + ':' + String(r).padStart(2, '0');
+  }
+  function tickFromStart(startedAt) {
+    const t0 = parseIso(startedAt);
+    if (!t0 || isNaN(t0.getTime())) return 0;
+    return (Date.now() - t0.getTime()) / 1000;
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch(apiUrl, { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) return;
+      const data = await res.json();
+      const onThisDay = data.active && data.active.work_day_id === workDayId;
+
+      let grand = 0;
+      const byId = {};
+      for (const t of data.tasks) {
+        byId[t.id] = t.seconds;
+        grand += t.seconds;
+      }
+      const elGrand = document.getElementById('day-total');
+      if (elGrand) elGrand.textContent = formatSeconds(grand);
+
+      for (const id of Object.keys(byId)) {
+        const el = document.getElementById('task-time-' + id);
+        if (el) el.textContent = formatSeconds(byId[id]);
+      }
+
+      const activeElapsed = document.getElementById('active-elapsed');
+      if (onThisDay && data.active && activeElapsed) {
+        activeElapsed.textContent = formatSeconds(tickFromStart(data.active.started_at));
+        activeElapsed.dataset.started = data.active.started_at;
+      }
+    } catch (_) {}
+  }
+  setInterval(refresh, 1000);
+  refresh();
+
+  const exportMenuToggle = document.getElementById('export-menu-toggle');
+  const exportMenu = document.getElementById('export-menu');
+  const reportDropdown = document.getElementById('report-dropdown');
+
+  function closeExportMenu() {
+    if (!exportMenu || !exportMenuToggle) return;
+    exportMenu.hidden = true;
+    exportMenuToggle.setAttribute('aria-expanded', 'false');
+  }
+
+  function openExportMenu() {
+    if (!exportMenu || !exportMenuToggle) return;
+    exportMenu.hidden = false;
+    exportMenuToggle.setAttribute('aria-expanded', 'true');
+  }
+
+  if (exportMenuToggle && exportMenu && reportDropdown) {
+    exportMenuToggle.addEventListener('click', () => {
+      if (exportMenu.hidden) {
+        openExportMenu();
+      } else {
+        closeExportMenu();
+      }
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!reportDropdown.contains(event.target)) {
+        closeExportMenu();
+      }
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeExportMenu();
+      }
+    });
+
+    exportMenu.addEventListener('click', () => {
+      // Close after selecting any export format.
+      closeExportMenu();
+    });
+  }
+
+  function safeFileStem(raw) {
+    return (raw || 'report').toLowerCase().replace(/[^a-zа-я0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'report';
+  }
+
+  function insertBullet(textarea) {
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const value = textarea.value;
+    const lineStart = value.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+    const prefix = value.slice(lineStart, start).trim() ? '\n• ' : '• ';
+    const next = value.slice(0, start) + prefix + value.slice(end);
+    textarea.value = next;
+    const pos = start + prefix.length;
+    textarea.focus();
+    textarea.setSelectionRange(pos, pos);
+  }
+
+  function saveDataUrl(filename, dataUrl) {
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  async function copyTextToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    if (!ok) throw new Error('copy failed');
+  }
+
+  async function exportCopyTxtReport() {
+    const btn = document.getElementById('export-copy-txt');
+    if (!btn) return;
+    closeExportMenu();
+    const prev = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Копируем…';
+    try {
+      const res = await fetch(reportTxtUrl, { headers: { Accept: 'text/plain; charset=utf-8' } });
+      if (!res.ok) throw new Error('Не удалось получить отчёт');
+      await copyTextToClipboard(await res.text());
+      btn.textContent = 'Скопировано!';
+    } catch (_) {
+      alert('Не удалось скопировать отчёт в буфер обмена');
+      btn.textContent = prev;
+    } finally {
+      btn.disabled = false;
+      setTimeout(() => {
+        btn.textContent = prev;
+      }, 1800);
+    }
+  }
+
+  function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    if (!words.length) return y;
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? (line + ' ' + word) : word;
+      if (ctx.measureText(candidate).width <= maxWidth) {
+        line = candidate;
+      } else {
+        ctx.fillText(line, x, y);
+        y += lineHeight;
+        line = word;
+      }
+    }
+    if (line) {
+      ctx.fillText(line, x, y);
+      y += lineHeight;
+    }
+    return y;
+  }
+
+  async function exportPngReport() {
+    const btn = document.getElementById('export-png');
+    if (!btn) return;
+    closeExportMenu();
+    btn.disabled = true;
+    btn.textContent = 'Готовим PNG...';
+    try {
+      const res = await fetch(reportDataUrl, { headers: { Accept: 'application/json' } });
+      if (!res.ok) throw new Error('Не удалось получить данные отчёта');
+      const report = await res.json();
+
+      const width = 1100;
+      const padding = 60;
+      const rowHeight = 46;
+      const taskCount = (report.tasks || []).length;
+      const baseHeight = 280;
+      const height = Math.max(520, baseHeight + taskCount * rowHeight + 80);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#0f1218';
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.fillStyle = '#e8eaef';
+      ctx.font = '700 42px "Segoe UI", sans-serif';
+      ctx.fillText(report.work_day.title || 'Рабочий день', padding, 80);
+
+      ctx.fillStyle = '#8b93a7';
+      ctx.font = '500 22px "Segoe UI", sans-serif';
+      ctx.fillText('Отчёт по рабочему дню', padding, 120);
+      ctx.fillText(`Всего: ${report.summary.total_duration}`, padding, 154);
+      ctx.fillText(`Задач: ${report.summary.task_count} · Сессий: ${report.summary.session_count}`, padding, 184);
+
+      let y = 224;
+      if (report.work_day.note) {
+        ctx.fillStyle = '#d4d8e2';
+        ctx.font = '400 20px "Segoe UI", sans-serif';
+        y = drawWrappedText(ctx, report.work_day.note, padding, y, width - padding * 2, 30) + 10;
+      }
+
+      ctx.fillStyle = '#2a3142';
+      ctx.fillRect(padding, y, width - padding * 2, 2);
+      y += 38;
+
+      ctx.fillStyle = '#8b93a7';
+      ctx.font = '600 18px "Segoe UI", sans-serif';
+      ctx.fillText('Задача', padding, y);
+      ctx.fillText('Время', width - padding - 240, y);
+      ctx.fillText('Сессии', width - padding - 120, y);
+      y += 24;
+      ctx.fillStyle = '#2a3142';
+      ctx.fillRect(padding, y, width - padding * 2, 1);
+      y += 32;
+
+      ctx.font = '400 20px "Segoe UI", sans-serif';
+      for (const task of (report.tasks || [])) {
+        ctx.fillStyle = '#e8eaef';
+        ctx.fillText(task.name, padding, y);
+        ctx.fillStyle = '#d4d8e2';
+        ctx.fillText(task.duration, width - padding - 240, y);
+        ctx.fillText(String(task.session_count), width - padding - 120, y);
+        y += rowHeight;
+      }
+
+      ctx.fillStyle = '#8b93a7';
+      ctx.font = '400 16px "Segoe UI", sans-serif';
+      const footer = `Экспортировано: ${report.exported_at}`;
+      ctx.fillText(footer, padding, height - 24);
+
+      const filename = safeFileStem(report.work_day.title) + '.png';
+      saveDataUrl(filename, canvas.toDataURL('image/png'));
+    } catch (err) {
+      alert('Не удалось сохранить PNG-отчёт');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'PNG';
+      closeExportMenu();
+    }
+  }
+
+  const exportPngBtn = document.getElementById('export-png');
+  if (exportPngBtn) {
+    exportPngBtn.addEventListener('click', exportPngReport);
+  }
+
+  const exportCopyTxtBtn = document.getElementById('export-copy-txt');
+  if (exportCopyTxtBtn) {
+    exportCopyTxtBtn.addEventListener('click', exportCopyTxtReport);
+  }
+
+  document.querySelectorAll('.js-note-bullet').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const wrap = btn.closest('.note-editor-wrap');
+      const textarea = wrap ? wrap.querySelector('.js-note-editor') : null;
+      insertBullet(textarea);
+    });
+  });
+
+  (function initTaskNameCombobox() {
+    const input = document.getElementById('task-name-input');
+    const list = document.getElementById('task-name-suggestions');
+    const apiUrl = {{ task_names_api_url | tojson }};
+    if (!input || !list || !apiUrl) return;
+
+    let debounceTimer = null;
+    let activeIndex = -1;
+    let currentItems = [];
+
+    function closeList() {
+      list.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      currentItems = [];
+      list.innerHTML = '';
+    }
+
+    function openList() {
+      list.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+    }
+
+    function pickValue(value) {
+      input.value = value;
+      closeList();
+      input.focus();
+    }
+
+    function renderItems(items) {
+      list.innerHTML = '';
+      currentItems = items;
+      activeIndex = -1;
+      if (!items.length) {
+        closeList();
+        return;
+      }
+      for (const name of items) {
+        const li = document.createElement('li');
+        li.className = 'task-name-suggestions__item';
+        li.setAttribute('role', 'option');
+        li.textContent = name;
+        li.addEventListener('mousedown', (event) => {
+          event.preventDefault();
+          pickValue(name);
+        });
+        list.appendChild(li);
+      }
+      openList();
+    }
+
+    function highlightIndex(next) {
+      const options = list.querySelectorAll('.task-name-suggestions__item');
+      if (!options.length) return;
+      activeIndex = (next + options.length) % options.length;
+      options.forEach((el, i) => {
+        el.classList.toggle('is-active', i === activeIndex);
+      });
+      options[activeIndex].scrollIntoView({ block: 'nearest' });
+    }
+
+    async function fetchSuggestions() {
+      const q = input.value.trim();
+      try {
+        const url = q ? `${apiUrl}?q=${encodeURIComponent(q)}` : apiUrl;
+        const res = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (!res.ok) return;
+        const items = await res.json();
+        const filtered = items.filter((n) => n.toLowerCase() !== q.toLowerCase());
+        renderItems(filtered.length ? filtered : items);
+      } catch (_) {
+        closeList();
+      }
+    }
+
+    input.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(fetchSuggestions, 180);
+    });
+
+    input.addEventListener('focus', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(fetchSuggestions, 80);
+    });
+
+    input.addEventListener('keydown', (event) => {
+      if (list.hidden) return;
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        highlightIndex(activeIndex + 1);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        highlightIndex(activeIndex - 1);
+      } else if (event.key === 'Enter' && activeIndex >= 0) {
+        event.preventDefault();
+        const el = list.querySelectorAll('.task-name-suggestions__item')[activeIndex];
+        if (el) pickValue(el.textContent);
+      } else if (event.key === 'Escape') {
+        closeList();
+      }
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!input.contains(event.target) && !list.contains(event.target)) {
+        closeList();
+      }
+    });
+  })();
+</script>
+{% endblock %}

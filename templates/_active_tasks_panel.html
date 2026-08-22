@@ -1,0 +1,50 @@
+<aside class="active-tasks-panel" id="active-tasks-panel" aria-label="Активные задачи">
+  <div class="active-tasks-panel__inner card card--compact">
+    <h2 class="active-tasks-panel__title">Активные задачи</h2>
+
+    <form method="post" action="{{ url_for('create_active_task') }}" class="active-tasks-panel__add">
+      <input
+        type="text"
+        name="name"
+        placeholder="+ задача"
+        required
+        maxlength="200"
+        class="active-task-item__input"
+        autocomplete="off"
+      >
+    </form>
+
+    {% if active_tasks %}
+    <ul class="active-tasks-list">
+      {% for t in active_tasks %}
+      <li class="active-task-item" data-active-task-id="{{ t.id }}">
+        {% if panel_work_day_id %}
+        <form
+          method="post"
+          action="{{ url_for('add_active_task_to_day', work_day_id=panel_work_day_id, active_task_id=t.id) }}"
+          class="inline-form active-task-item__day-form"
+        >
+          <button type="submit" class="active-task-item__day-btn" title="В рабочий день">→</button>
+        </form>
+        {% endif %}
+        <input
+          type="text"
+          name="name"
+          value="{{ t.name }}"
+          maxlength="200"
+          class="active-task-item__input js-active-task-input"
+          data-original="{{ t.name }}"
+          data-update-url="{{ url_for('update_active_task', active_task_id=t.id) }}"
+          data-delete-url="{{ url_for('delete_active_task', active_task_id=t.id) }}"
+          autocomplete="off"
+        >
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</aside>
+
+<button type="button" class="active-tasks-panel__toggle" id="active-tasks-toggle" aria-controls="active-tasks-panel" aria-expanded="false" hidden>
+  Задачи
+</button>
