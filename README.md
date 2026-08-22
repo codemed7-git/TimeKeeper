@@ -34,3 +34,35 @@ python app.py
 Откройте браузер и перейдите по адресу: http://127.0.0.1:7777/
 
 База данных `timekeeper.db` создаётся автоматически при первом запуске.
+
+
+## Интерфейс
+
+### Рабочие дни
+
+<p align="center">
+  <img src="static/media/Таймер_ГС.png" alt="Список рабочих дней">
+</p>
+<p align="center"><i>Список рабочих дней с фильтрами и активными задачами</i></p>
+
+<p align="center">
+  <img src="static/media/Рабочий_день.png" alt="Рабочий день с таймером">
+</p>
+<p align="center"><i>Учёт времени по задачам в течение рабочего дня</i></p>
+
+<p align="center">
+  <img src="static/media/Рабочий_день_итоги.png" alt="Итоги рабочего дня">
+</p>
+<p align="center"><i>Фиксация итогов, планов и вопросов по дню</i></p>
+
+### TO-DO
+
+<p align="center">
+  <img src="static/media/TO_DO_главная.png" alt="Список проектов TO-DO">
+</p>
+<p align="center"><i>Канбан по проектам - обзор всех досок</i></p>
+
+<p align="center">
+  <img src="static/media/TO_DO_проект.png" alt="Канбан-доска проекта">
+</p>
+<p align="center"><i>Канбан-доска отдельного проекта</i></p>
