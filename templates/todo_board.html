@@ -13,6 +13,7 @@
     </p>
   </div>
   <div class="todo-board-header__actions">
+    <button type="button" class="btn btn--ghost btn--sm" data-open-modal="modal-new-column">Новая колонка</button>
     <button type="button" class="btn btn--ghost btn--sm" data-open-modal="modal-edit-project">Переименовать</button>
     <form method="post" action="{{ url_for('todo_delete_project', project_id=project.id) }}" onsubmit="return confirm('Удалить проект «{{ project.title }}» и все задачи?');">
       <button type="submit" class="btn btn--danger btn--sm">Удалить</button>
@@ -97,12 +98,6 @@
       </div>
     </section>
     {% endfor %}
-    <button
-      type="button"
-      class="kanban-add-column"
-      data-open-modal="modal-new-column"
-      title="Добавить колонку"
-    >+ Колонка</button>
   </div>
 </div>
 </div>
