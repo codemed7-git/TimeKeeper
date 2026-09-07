@@ -1,0 +1,19 @@
+<aside
+  class="timer-float"
+  id="timer-float"
+  aria-label="Активный таймер"
+  data-remaining="{{ timer_active.remaining_seconds }}"
+  data-running-since="{{ timer_active.running_since or '' }}"
+  data-complete-url="{{ url_for('timer_complete') }}"
+  data-sound-url="{{ timer_active.sound_url or '' }}"
+  data-sound-seconds="{{ timer_active.sound_seconds or 0 }}"
+  data-sound-volume="{{ timer_active.sound_volume or 80 }}"
+>
+  <a href="{{ url_for('timer_home') }}" class="timer-float__main">
+    <span class="timer-float__name" title="{{ timer_active.name or 'Таймер' }}">{{ timer_active.name or 'Таймер' }}</span>
+    <span class="timer-float__time mono" id="timer-float-elapsed">{{ fmt_duration(timer_active.remaining_live) }}</span>
+  </a>
+  <form method="post" action="{{ url_for('timer_stop') }}" class="timer-float__stop">
+    <button type="submit" class="timer-float__stop-btn" title="Остановить">Стоп</button>
+  </form>
+</aside>

@@ -134,8 +134,8 @@
   {% else %}
   <ul class="task-list">
     {% for t in tasks %}
-    <li class="task-row" data-task-id="{{ t.id }}">
-      <div class="task-main">
+    <li class="task-row task-row--editable" data-task-id="{{ t.id }}">
+      <div class="task-main" role="button" tabindex="0" title="Редактировать задачу и сессии">
         <span class="task-name">{{ t.name }}</span>
         <span class="task-time mono" id="task-time-{{ t.id }}">{{ fmt(t.seconds) }}</span>
       </div>
@@ -158,6 +158,30 @@
   </ul>
   {% endif %}
 </section>
+
+<div class="modal" id="modal-edit-task" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog modal__dialog--wide" role="dialog" aria-labelledby="modal-edit-task-title">
+    <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">×</button>
+    <h2 class="modal__title" id="modal-edit-task-title">Редактировать задачу</h2>
+    <form id="task-edit-form" class="stack-form">
+      <label class="field">
+        <span class="field-label">Название</span>
+        <input type="text" id="task-edit-name" class="input" maxlength="200" required>
+      </label>
+      <div class="field">
+        <span class="field-label">Сессии</span>
+        <p id="task-edit-no-sessions" class="muted small-hint" hidden>Нет сессий — время появится после «Старт».</p>
+        <ul id="task-edit-sessions" class="session-edit-list"></ul>
+      </div>
+      <p id="task-edit-error" class="form-error" hidden></p>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-close-modal>Отмена</button>
+        <button type="submit" class="btn btn--primary" id="task-edit-save">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -166,6 +190,8 @@
   const apiUrl = {{ url_for('api_state', work_day_id=wd.id) | tojson }};
   const reportDataUrl = {{ url_for('report_data', work_day_id=wd.id) | tojson }};
   const reportTxtUrl = {{ url_for('export_report_txt', work_day_id=wd.id) | tojson }};
+  const taskDataUrlTpl = {{ url_for('task_data', work_day_id=wd.id, task_id=0) | tojson }};
+  const taskEditUrlTpl = {{ url_for('task_edit', work_day_id=wd.id, task_id=0) | tojson }};
 
   function parseIso(s) {
     if (!s) return null;
@@ -553,6 +579,223 @@
     document.addEventListener('click', (event) => {
       if (!input.contains(event.target) && !list.contains(event.target)) {
         closeList();
+      }
+    });
+  })();
+
+  (function initTaskEditModal() {
+    const modal = document.getElementById('modal-edit-task');
+    const form = document.getElementById('task-edit-form');
+    const nameInput = document.getElementById('task-edit-name');
+    const sessionsList = document.getElementById('task-edit-sessions');
+    const noSessionsEl = document.getElementById('task-edit-no-sessions');
+    const errorEl = document.getElementById('task-edit-error');
+    const saveBtn = document.getElementById('task-edit-save');
+    if (!modal || !form || !nameInput || !sessionsList) return;
+
+    let currentTaskId = null;
+    const deletedSessionIds = new Set();
+
+    function taskUrl(tpl, taskId) {
+      return tpl.replace('/0/', '/' + taskId + '/').replace('/0', '/' + taskId);
+    }
+
+    function openModalEl(el) {
+      if (!el) return;
+      el.hidden = false;
+      document.body.classList.add('modal-open');
+    }
+
+    function closeModalEl(el) {
+      if (!el) return;
+      el.hidden = true;
+      if (!document.querySelector('.modal:not([hidden])')) {
+        document.body.classList.remove('modal-open');
+      }
+    }
+
+    function showError(msg) {
+      if (!errorEl) return;
+      if (!msg) {
+        errorEl.hidden = true;
+        errorEl.textContent = '';
+        return;
+      }
+      errorEl.hidden = false;
+      errorEl.textContent = msg;
+    }
+
+    function sessionDurationText(startInput, endInput) {
+      const start = startInput.value;
+      if (!start) return '—';
+      const t0 = new Date(start);
+      if (isNaN(t0.getTime())) return '—';
+      let t1;
+      if (endInput.value) {
+        t1 = new Date(endInput.value);
+        if (isNaN(t1.getTime())) return '—';
+      } else {
+        t1 = new Date();
+      }
+      return formatSeconds(Math.max(0, (t1 - t0) / 1000));
+    }
+
+    function bindSessionRow(li) {
+      const startInput = li.querySelector('.js-session-start');
+      const endInput = li.querySelector('.js-session-end');
+      const durationEl = li.querySelector('.js-session-duration');
+      const deleteBtn = li.querySelector('.js-session-delete');
+
+      function updateDuration() {
+        if (durationEl) durationEl.textContent = sessionDurationText(startInput, endInput);
+      }
+
+      startInput.addEventListener('change', updateDuration);
+      endInput.addEventListener('change', updateDuration);
+      updateDuration();
+
+      deleteBtn.addEventListener('click', () => {
+        const sid = parseInt(li.dataset.sessionId, 10);
+        if (sid) deletedSessionIds.add(sid);
+        li.remove();
+        if (!sessionsList.children.length && noSessionsEl) noSessionsEl.hidden = false;
+      });
+    }
+
+    function renderSessions(sessions) {
+      sessionsList.innerHTML = '';
+      deletedSessionIds.clear();
+      if (!sessions.length) {
+        if (noSessionsEl) noSessionsEl.hidden = false;
+        return;
+      }
+      if (noSessionsEl) noSessionsEl.hidden = true;
+      for (const s of sessions) {
+        const li = document.createElement('li');
+        li.className = 'session-edit-row';
+        li.dataset.sessionId = String(s.id);
+        li.innerHTML =
+          '<div class="session-edit-row__fields">' +
+            '<label class="session-edit-field">' +
+              '<span class="session-edit-field__label">Начало</span>' +
+              '<input type="datetime-local" class="input input--compact js-session-start" required value="' + (s.started_at_local || '') + '">' +
+            '</label>' +
+            '<label class="session-edit-field">' +
+              '<span class="session-edit-field__label">Конец</span>' +
+              '<input type="datetime-local" class="input input--compact js-session-end" value="' + (s.ended_at_local || '') + '" placeholder="' + (s.is_active ? 'идёт' : '') + '">' +
+            '</label>' +
+            '<span class="session-edit-row__duration mono js-session-duration">' + (s.duration || '—') + '</span>' +
+          '</div>' +
+          '<button type="button" class="btn btn--ghost btn--sm js-session-delete">Удалить</button>';
+        if (s.is_active) {
+          const badge = document.createElement('span');
+          badge.className = 'session-edit-row__badge';
+          badge.textContent = 'идёт';
+          li.querySelector('.session-edit-row__fields').appendChild(badge);
+        }
+        sessionsList.appendChild(li);
+        bindSessionRow(li);
+      }
+    }
+
+    async function openTaskEditor(taskId) {
+      currentTaskId = taskId;
+      showError('');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Загрузка…';
+      openModalEl(modal);
+      try {
+        const res = await fetch(taskUrl(taskDataUrlTpl, taskId), { headers: { Accept: 'application/json' } });
+        if (!res.ok) throw new Error('Не удалось загрузить задачу');
+        const data = await res.json();
+        nameInput.value = data.name || '';
+        renderSessions(data.sessions || []);
+        nameInput.focus();
+        nameInput.select();
+      } catch (_) {
+        showError('Не удалось загрузить данные задачи');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Сохранить';
+      }
+    }
+
+    function shouldIgnoreTaskClick(target) {
+      return !!(target.closest('.task-actions') || target.closest('button') || target.closest('form'));
+    }
+
+    document.querySelectorAll('.task-row--editable').forEach((row) => {
+      const main = row.querySelector('.task-main');
+      if (!main) return;
+      main.addEventListener('click', (event) => {
+        if (shouldIgnoreTaskClick(event.target)) return;
+        openTaskEditor(parseInt(row.dataset.taskId, 10));
+      });
+      main.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openTaskEditor(parseInt(row.dataset.taskId, 10));
+      });
+    });
+
+    modal.querySelectorAll('[data-close-modal]').forEach((btn) => {
+      btn.addEventListener('click', () => closeModalEl(modal));
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && modal && !modal.hidden) closeModalEl(modal);
+    });
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!currentTaskId) return;
+      showError('');
+      const sessions = [];
+      sessionsList.querySelectorAll('.session-edit-row').forEach((li) => {
+        const sid = parseInt(li.dataset.sessionId, 10);
+        const startInput = li.querySelector('.js-session-start');
+        const endInput = li.querySelector('.js-session-end');
+        if (!sid || !startInput) return;
+        sessions.push({
+          id: sid,
+          started_at: startInput.value,
+          ended_at: endInput.value,
+        });
+      });
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Сохраняем…';
+      try {
+        const res = await fetch(taskUrl(taskEditUrlTpl, currentTaskId), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({
+            name: nameInput.value.trim(),
+            sessions,
+            delete_session_ids: Array.from(deletedSessionIds),
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showError(data.error || 'Не удалось сохранить');
+          return;
+        }
+        const row = document.querySelector('.task-row[data-task-id="' + currentTaskId + '"]');
+        if (row) {
+          const nameEl = row.querySelector('.task-name');
+          const timeEl = document.getElementById('task-time-' + currentTaskId);
+          if (nameEl && data.task) nameEl.textContent = data.task.name;
+          if (timeEl && data.task) timeEl.textContent = formatSeconds(data.task.seconds);
+        }
+        closeModalEl(modal);
+        refresh();
+      } catch (_) {
+        showError('Не удалось сохранить изменения');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Сохранить';
       }
     });
   })();

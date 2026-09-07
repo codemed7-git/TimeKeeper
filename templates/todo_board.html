@@ -23,18 +23,53 @@
 <div class="kanban-board-wrapper">
   <div class="kanban-board" id="kanban-board">
     {% for column in columns %}
-    <section class="kanban-column kanban-column--{{ column.color_key }}" data-column-id="{{ column.id }}">
+    <section
+      class="kanban-column kanban-column--{{ column.color_key }}{% if column.collapsed %} is-collapsed{% endif %}"
+      data-column-id="{{ column.id }}"
+      data-column-title="{{ column.title|e }}"
+    >
       <div class="kanban-column__header">
-        <h2 class="kanban-column__title">{{ column.title }}</h2>
+        <form
+          method="post"
+          action="{{ url_for('todo_collapse_column', column_id=column.id) }}"
+          class="kanban-collapse-form js-collapse-column"
+        >
+          <input type="hidden" name="collapsed" value="{{ 0 if column.collapsed else 1 }}">
+          <button
+            type="submit"
+            class="kanban-icon-btn kanban-collapse-btn"
+            title="{{ 'Развернуть' if column.collapsed else 'Свернуть' }}"
+            aria-label="{{ 'Развернуть колонку' if column.collapsed else 'Свернуть колонку' }}"
+            aria-expanded="{{ 'false' if column.collapsed else 'true' }}"
+          >{{ '›' if column.collapsed else '‹' }}</button>
+        </form>
+        <button
+          type="button"
+          class="kanban-column__title js-edit-column"
+          title="Переименовать колонку"
+        >{{ column.title }}</button>
         <div class="kanban-column__meta">
           <span class="kanban-column__count">{{ column.cards|length }}</span>
           <button
             type="button"
-            class="kanban-icon-btn"
+            class="kanban-icon-btn kanban-column__add-card"
             title="Добавить задачу"
             data-open-modal="modal-new-card"
             data-column-id="{{ column.id }}"
           >+</button>
+          <button
+            type="button"
+            class="kanban-icon-btn kanban-icon-btn--header js-edit-column"
+            title="Переименовать колонку"
+          >✎</button>
+          <form
+            method="post"
+            action="{{ url_for('todo_delete_column', column_id=column.id) }}"
+            class="kanban-column__delete"
+            onsubmit="return confirm('Удалить колонку «{{ column.title }}» и все её задачи?');"
+          >
+            <button type="submit" class="kanban-icon-btn kanban-icon-btn--header" title="Удалить колонку">×</button>
+          </form>
         </div>
       </div>
       <div class="kanban-column__cards" data-drop-zone>
@@ -62,6 +97,12 @@
       </div>
     </section>
     {% endfor %}
+    <button
+      type="button"
+      class="kanban-add-column"
+      data-open-modal="modal-new-column"
+      title="Добавить колонку"
+    >+ Колонка</button>
   </div>
 </div>
 </div>
@@ -131,6 +172,42 @@
     </form>
   </div>
 </div>
+
+<div class="modal" id="modal-new-column" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog" role="dialog" aria-labelledby="modal-new-column-title">
+    <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">&times;</button>
+    <h2 class="modal__title" id="modal-new-column-title">Новая колонка</h2>
+    <form method="post" action="{{ url_for('todo_create_column', project_id=project.id) }}" class="stack-form">
+      <label class="field">
+        <span class="field-label">Название</span>
+        <input type="text" name="title" class="input" required>
+      </label>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-close-modal>Отмена</button>
+        <button type="submit" class="btn btn--primary">Добавить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal" id="modal-edit-column" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog" role="dialog" aria-labelledby="modal-edit-column-title">
+    <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">&times;</button>
+    <h2 class="modal__title" id="modal-edit-column-title">Колонка</h2>
+    <form method="post" id="form-edit-column" class="stack-form" action="">
+      <label class="field">
+        <span class="field-label">Название</span>
+        <input type="text" name="title" id="edit-column-title" class="input" required>
+      </label>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-close-modal>Отмена</button>
+        <button type="submit" class="btn btn--primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -139,6 +216,8 @@
     moveCard: {{ url_for('todo_move_card')|tojson }},
     createCard: {{ url_for('todo_create_card', column_id=111111)|tojson }}.replace('111111', '__ID__'),
     updateCard: {{ url_for('todo_update_card', card_id=111111)|tojson }}.replace('111111', '__ID__'),
+    updateColumn: {{ url_for('todo_update_column', column_id=111111)|tojson }}.replace('111111', '__ID__'),
+    collapseColumn: {{ url_for('todo_collapse_column', column_id=111111)|tojson }}.replace('111111', '__ID__'),
   };
 </script>
 <script src="{{ url_for('static', filename='todo.js') }}"></script>

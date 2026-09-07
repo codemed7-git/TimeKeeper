@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Граф знаний{% endblock %}
+
+{% block body %}
+<div
+  class="kg"
+  id="knowledge-app"
+  data-urls='{{ {
+    "graph": url_for("api_knowledge_graph"),
+    "notes": url_for("api_knowledge_notes"),
+    "create": url_for("api_knowledge_create_note"),
+    "note": url_for("api_knowledge_note", note_id=0),
+    "update": url_for("api_knowledge_update_note", note_id=0),
+    "delete": url_for("api_knowledge_delete_note", note_id=0),
+    "importTodo": url_for("knowledge_import_todo")
+  } | tojson }}'
+>
+  <aside class="kg-sidebar">
+    <div class="kg-sidebar__head">
+      <h1 class="kg-sidebar__title">Граф знаний</h1>
+      <div class="kg-sidebar__actions">
+        <button type="button" class="btn btn--ghost btn--sm" id="kg-import-todo" title="Импорт проектов и задач из TO-DO">Из TO-DO</button>
+        <button type="button" class="btn btn--primary btn--sm" id="kg-new-note">Новая</button>
+      </div>
+    </div>
+    <label class="kg-search">
+      <span class="visually-hidden">Поиск</span>
+      <input type="search" id="kg-search" class="input input--compact" placeholder="Поиск заметок…" autocomplete="off">
+    </label>
+    <p class="kg-sidebar__hint muted">Связи через <code>[[название]]</code></p>
+    <ul class="kg-note-list" id="kg-note-list"></ul>
+  </aside>
+
+  <section class="kg-graph-pane" aria-label="Граф">
+    <div class="kg-graph-toolbar">
+      <button type="button" class="btn btn--ghost btn--xs" id="kg-fit" title="Вписать">Вписать</button>
+      <button type="button" class="btn btn--ghost btn--xs" id="kg-reheat" title="Перестроить">Перестроить</button>
+      <label class="kg-toggle">
+        <input type="checkbox" id="kg-show-unresolved" checked>
+        <span>Несозданные</span>
+      </label>
+      <span class="kg-graph-stats muted" id="kg-graph-stats"></span>
+    </div>
+    <canvas id="kg-canvas" class="kg-canvas"></canvas>
+    <p class="kg-graph-empty muted" id="kg-graph-empty" hidden>
+      Пока нет заметок. Создайте первую — и связывайте их через <code>[[вики-ссылки]]</code>.
+    </p>
+  </section>
+
+  <aside class="kg-editor" id="kg-editor" hidden>
+    <div class="kg-editor__head">
+      <input type="text" id="kg-note-title" class="input kg-editor__title" placeholder="Название заметки" maxlength="200" autocomplete="off">
+      <div class="kg-editor__actions">
+        <span class="kg-editor__status muted" id="kg-save-status"></span>
+        <button type="button" class="btn btn--ghost btn--sm" id="kg-close-editor" title="Закрыть">Закрыть</button>
+        <button type="button" class="btn btn--danger btn--sm" id="kg-delete-note">Удалить</button>
+      </div>
+    </div>
+    <textarea id="kg-note-body" class="input kg-editor__body" placeholder="Текст заметки. Связи: [[Другая заметка]]" spellcheck="true"></textarea>
+    <div class="kg-editor__meta">
+      <div class="kg-links-block">
+        <h3 class="kg-links-block__title">Исходящие</h3>
+        <ul class="kg-links" id="kg-outgoing"></ul>
+      </div>
+      <div class="kg-links-block">
+        <h3 class="kg-links-block__title">Обратные ссылки</h3>
+        <ul class="kg-links" id="kg-incoming"></ul>
+      </div>
+    </div>
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.KG_BOOT = {
+    notes: {{ notes | tojson }},
+    graph: {{ graph | tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='knowledge.js') }}"></script>
+{% endblock %}

@@ -5,8 +5,31 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Flask, Response, abort, g, jsonify, redirect, render_template, request, url_for
+from werkzeug.utils import secure_filename
 
 DATABASE = Path(__file__).parent / "timekeeper.db"
+TIMER_SOUNDS_DIR = Path(__file__).parent / "static" / "timer_sounds"
+CUSTOM_SOUNDS_DIR = TIMER_SOUNDS_DIR / "custom"
+MAX_CUSTOM_SOUND_BYTES = 5 * 1024 * 1024
+ALLOWED_SOUND_EXT = {".mp3", ".wav", ".ogg", ".oga", ".m4a", ".aac", ".flac", ".webm"}
+
+BUILTIN_TIMER_SOUNDS = [
+    ("01_pik", "Пик"),
+    ("02_dvoynoy", "Двойной пик"),
+    ("03_troynoy", "Тройной"),
+    ("04_zvonok", "Звонок"),
+    ("05_kolokolchik", "Колокольчик"),
+    ("06_cifrovoy", "Цифровой"),
+    ("07_puls", "Пульс"),
+    ("08_arpedzhio", "Арпеджио"),
+    ("09_sirena", "Сирена"),
+    ("10_vverh", "Вверх"),
+    ("11_vniz", "Вниз"),
+    ("12_ksilofon", "Ксилофон"),
+    ("13_chasy", "Часы"),
+    ("14_myagkiy", "Мягкий"),
+    ("15_srochnyy", "Срочный"),
+]
 
 
 def utc_now() -> datetime:
@@ -43,6 +66,11 @@ def _table_columns(conn, table: str) -> set[str]:
 
 
 def migrate_db(conn):
+    """Apply schema migrations only. Does not seed demo/sample rows.
+
+    Legacy transforms may rewrite existing user rows (e.g. orphan sessions);
+    a fresh empty database stays empty after migrate.
+    """
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS work_days (
@@ -70,6 +98,8 @@ def migrate_db(conn):
     _migrate_drop_work_days_created_at(conn)
     _migrate_active_tasks(conn)
     _migrate_todo(conn)
+    _migrate_timer(conn)
+    _migrate_knowledge(conn)
     orphan = conn.execute(
         "SELECT COUNT(*) FROM work_sessions WHERE work_day_id IS NULL"
     ).fetchone()[0]
@@ -128,7 +158,8 @@ def _migrate_todo(conn):
             project_id INTEGER NOT NULL REFERENCES todo_projects(id) ON DELETE CASCADE,
             title TEXT NOT NULL,
             color_key TEXT NOT NULL DEFAULT 'planned',
-            sort_order INTEGER NOT NULL DEFAULT 0
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            collapsed INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS todo_cards (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -142,6 +173,411 @@ def _migrate_todo(conn):
         CREATE INDEX IF NOT EXISTS idx_todo_cards_column ON todo_cards(column_id);
         """
     )
+    conn.commit()
+    if "collapsed" not in _table_columns(conn, "todo_columns"):
+        conn.execute(
+            "ALTER TABLE todo_columns ADD COLUMN collapsed INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.commit()
+
+
+def _migrate_timer(conn):
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS timer_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL DEFAULT '',
+            duration_seconds INTEGER NOT NULL,
+            remaining_seconds INTEGER NOT NULL,
+            running_since TEXT,
+            ended_at TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_timer_runs_ended ON timer_runs(ended_at);
+        """
+    )
+    conn.execute("DROP TABLE IF EXISTS timer_sessions")
+    conn.execute("DROP TABLE IF EXISTS timer_tasks")
+    conn.commit()
+    _migrate_timer_sound_fields(conn)
+    CUSTOM_SOUNDS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+WIKILINK_RE = re.compile(r"\[\[([^\]|#]+)(?:#[^|\]]*)?(?:\|[^\]]+)?\]\]")
+
+
+def _migrate_knowledge(conn):
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS knowledge_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            title_norm TEXT NOT NULL UNIQUE,
+            body TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS knowledge_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL REFERENCES knowledge_notes(id) ON DELETE CASCADE,
+            target_title TEXT NOT NULL,
+            target_title_norm TEXT NOT NULL,
+            target_id INTEGER REFERENCES knowledge_notes(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_knowledge_links_source ON knowledge_links(source_id);
+        CREATE INDEX IF NOT EXISTS idx_knowledge_links_target ON knowledge_links(target_id);
+        CREATE INDEX IF NOT EXISTS idx_knowledge_links_target_norm ON knowledge_links(target_title_norm);
+        """
+    )
+    conn.commit()
+
+
+def normalize_note_title(title: str) -> str:
+    return re.sub(r"\s+", " ", (title or "").strip()).casefold()
+
+
+def extract_wikilinks(body: str) -> list[str]:
+    seen: set[str] = set()
+    titles: list[str] = []
+    for m in WIKILINK_RE.finditer(body or ""):
+        raw = (m.group(1) or "").strip()
+        if not raw:
+            continue
+        norm = normalize_note_title(raw)
+        if not norm or norm in seen:
+            continue
+        seen.add(norm)
+        titles.append(re.sub(r"\s+", " ", raw))
+    return titles
+
+
+def rebuild_note_links(conn, note_id: int, body: str) -> None:
+    conn.execute("DELETE FROM knowledge_links WHERE source_id = ?", (note_id,))
+    for target_title in extract_wikilinks(body):
+        target_norm = normalize_note_title(target_title)
+        row = conn.execute(
+            "SELECT id FROM knowledge_notes WHERE title_norm = ?",
+            (target_norm,),
+        ).fetchone()
+        target_id = row["id"] if row else None
+        if target_id == note_id:
+            continue
+        conn.execute(
+            """
+            INSERT INTO knowledge_links (source_id, target_title, target_title_norm, target_id)
+            VALUES (?, ?, ?, ?)
+            """,
+            (note_id, target_title, target_norm, target_id),
+        )
+
+
+def resolve_incoming_links(conn, note_id: int, title_norm: str) -> None:
+    conn.execute(
+        """
+        UPDATE knowledge_links
+        SET target_id = ?
+        WHERE target_title_norm = ? AND (target_id IS NULL OR target_id = ?)
+        """,
+        (note_id, title_norm, note_id),
+    )
+
+
+def list_knowledge_notes(conn) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT n.id, n.title, n.body, n.created_at, n.updated_at,
+               (SELECT COUNT(*) FROM knowledge_links l WHERE l.source_id = n.id) AS out_count,
+               (SELECT COUNT(*) FROM knowledge_links l WHERE l.target_id = n.id) AS in_count
+        FROM knowledge_notes n
+        ORDER BY n.updated_at DESC, n.id DESC
+        """
+    ).fetchall()
+    return [
+        {
+            "id": r["id"],
+            "title": r["title"],
+            "body": r["body"],
+            "created_at": r["created_at"],
+            "updated_at": r["updated_at"],
+            "out_count": r["out_count"],
+            "in_count": r["in_count"],
+        }
+        for r in rows
+    ]
+
+
+def get_knowledge_note(conn, note_id: int) -> dict | None:
+    row = conn.execute(
+        """
+        SELECT id, title, title_norm, body, created_at, updated_at
+        FROM knowledge_notes WHERE id = ?
+        """,
+        (note_id,),
+    ).fetchone()
+    if not row:
+        return None
+    outgoing = conn.execute(
+        """
+        SELECT target_title, target_id
+        FROM knowledge_links
+        WHERE source_id = ?
+        ORDER BY target_title COLLATE NOCASE
+        """,
+        (note_id,),
+    ).fetchall()
+    incoming = conn.execute(
+        """
+        SELECT n.id, n.title
+        FROM knowledge_links l
+        JOIN knowledge_notes n ON n.id = l.source_id
+        WHERE l.target_id = ?
+        ORDER BY n.title COLLATE NOCASE
+        """,
+        (note_id,),
+    ).fetchall()
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "title_norm": row["title_norm"],
+        "body": row["body"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "outgoing": [
+            {"title": r["target_title"], "id": r["target_id"]} for r in outgoing
+        ],
+        "incoming": [{"id": r["id"], "title": r["title"]} for r in incoming],
+    }
+
+
+def build_knowledge_graph(conn) -> dict:
+    notes = conn.execute(
+        "SELECT id, title, title_norm FROM knowledge_notes ORDER BY title COLLATE NOCASE"
+    ).fetchall()
+    links = conn.execute(
+        """
+        SELECT source_id, target_id, target_title, target_title_norm
+        FROM knowledge_links
+        """
+    ).fetchall()
+
+    nodes: list[dict] = []
+    node_ids: set[str] = set()
+    for n in notes:
+        nid = f"n:{n['id']}"
+        node_ids.add(nid)
+        nodes.append(
+            {
+                "id": nid,
+                "note_id": n["id"],
+                "title": n["title"],
+                "resolved": True,
+            }
+        )
+
+    edges: list[dict] = []
+    unresolved_norms: dict[str, str] = {}
+    for link in links:
+        source = f"n:{link['source_id']}"
+        if link["target_id"]:
+            target = f"n:{link['target_id']}"
+        else:
+            target = f"u:{link['target_title_norm']}"
+            unresolved_norms[link["target_title_norm"]] = link["target_title"]
+        if source not in node_ids:
+            continue
+        edges.append({"source": source, "target": target})
+
+    for norm, title in unresolved_norms.items():
+        uid = f"u:{norm}"
+        if uid in node_ids:
+            continue
+        node_ids.add(uid)
+        nodes.append(
+            {
+                "id": uid,
+                "note_id": None,
+                "title": title,
+                "resolved": False,
+            }
+        )
+
+    return {"nodes": nodes, "edges": edges}
+
+
+def _allocate_unique_note_title(base: str, used_norms: set[str], suffix: str | None = None) -> str:
+    base = re.sub(r"\s+", " ", (base or "").strip()) or "Без названия"
+    candidates = [base]
+    if suffix:
+        candidates.append(f"{base} ({suffix})")
+    for title in candidates:
+        norm = normalize_note_title(title)
+        if norm and norm not in used_norms:
+            used_norms.add(norm)
+            return title
+    stem = candidates[-1]
+    i = 2
+    while True:
+        title = f"{stem} {i}"
+        norm = normalize_note_title(title)
+        if norm not in used_norms:
+            used_norms.add(norm)
+            return title
+        i += 1
+
+
+def upsert_knowledge_note(conn, title: str, body: str, created_at: str | None = None) -> int:
+    title = re.sub(r"\s+", " ", (title or "").strip())
+    title_norm = normalize_note_title(title)
+    now = iso(utc_now())
+    created = created_at or now
+    row = conn.execute(
+        "SELECT id FROM knowledge_notes WHERE title_norm = ?",
+        (title_norm,),
+    ).fetchone()
+    if row:
+        note_id = row["id"]
+        conn.execute(
+            """
+            UPDATE knowledge_notes
+            SET title = ?, body = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (title, body, now, note_id),
+        )
+    else:
+        cur = conn.execute(
+            """
+            INSERT INTO knowledge_notes (title, title_norm, body, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (title, title_norm, body, created, now),
+        )
+        note_id = cur.lastrowid
+    rebuild_note_links(conn, note_id, body)
+    resolve_incoming_links(conn, note_id, title_norm)
+    return note_id
+
+
+def import_knowledge_from_todo(conn) -> dict:
+    """Create/update knowledge notes from TO-DO projects and cards with [[wikilinks]]."""
+    projects = conn.execute(
+        """
+        SELECT id, title, note, created_at, sort_order
+        FROM todo_projects
+        ORDER BY sort_order ASC, id ASC
+        """
+    ).fetchall()
+
+    # Track titles claimed by this import so cards/projects don't collide.
+    # Existing notes with the same title are upserted (re-import safe).
+    used_norms: set[str] = set()
+
+    hub_title = "TO-DO"
+    used_norms.add(normalize_note_title(hub_title))
+
+    project_titles: dict[int, str] = {}
+    for p in projects:
+        title = _allocate_unique_note_title(p["title"], used_norms)
+        project_titles[p["id"]] = title
+
+    card_titles: dict[int, str] = {}
+    boards: list[dict] = []
+
+    for p in projects:
+        columns = []
+        for col in conn.execute(
+            """
+            SELECT id, title, color_key, sort_order
+            FROM todo_columns
+            WHERE project_id = ?
+            ORDER BY sort_order ASC, id ASC
+            """,
+            (p["id"],),
+        ):
+            cards = []
+            for card in conn.execute(
+                """
+                SELECT id, title, note, created_at, sort_order
+                FROM todo_cards
+                WHERE column_id = ?
+                ORDER BY sort_order ASC, id ASC
+                """,
+                (col["id"],),
+            ):
+                note_title = _allocate_unique_note_title(
+                    card["title"], used_norms, suffix=project_titles[p["id"]]
+                )
+                card_titles[card["id"]] = note_title
+                cards.append(dict(card))
+            columns.append({**dict(col), "cards": cards})
+        boards.append({"project": dict(p), "columns": columns})
+
+    created_or_updated = 0
+
+    for board in boards:
+        p = board["project"]
+        project_title = project_titles[p["id"]]
+        parts = []
+        note = (p.get("note") or "").strip()
+        if note:
+            parts.append(note)
+        parts.append(f"Источник: TO-DO · проект «{p['title']}»")
+        parts.append("")
+        for col in board["columns"]:
+            if not col["cards"]:
+                continue
+            parts.append(f"### {col['title']}")
+            for card in col["cards"]:
+                parts.append(f"- [[{card_titles[card['id']]}]]")
+            parts.append("")
+        body = "\n".join(parts).strip() + "\n"
+        upsert_knowledge_note(conn, project_title, body, created_at=p.get("created_at"))
+        created_or_updated += 1
+
+        for col in board["columns"]:
+            for card in col["cards"]:
+                card_parts = [
+                    f"Проект: [[{project_title}]]",
+                    f"Статус: {col['title']}",
+                ]
+                card_note = (card.get("note") or "").strip()
+                if card_note:
+                    card_parts.append("")
+                    card_parts.append(card_note)
+                card_body = "\n".join(card_parts).strip() + "\n"
+                upsert_knowledge_note(
+                    conn,
+                    card_titles[card["id"]],
+                    card_body,
+                    created_at=card.get("created_at"),
+                )
+                created_or_updated += 1
+
+    hub_parts = ["Проекты из раздела TO-DO:", ""]
+    for p in projects:
+        hub_parts.append(f"- [[{project_titles[p['id']]}]]")
+    if not projects:
+        hub_parts.append("_Пока нет проектов._")
+    upsert_knowledge_note(conn, hub_title, "\n".join(hub_parts).strip() + "\n")
+    created_or_updated += 1
+
+    conn.commit()
+    return {
+        "projects": len(projects),
+        "cards": len(card_titles),
+        "notes": created_or_updated,
+        "graph": build_knowledge_graph(conn),
+    }
+
+
+def _migrate_timer_sound_fields(conn):
+    cols = _table_columns(conn, "timer_runs")
+    if "sound_key" not in cols:
+        conn.execute("ALTER TABLE timer_runs ADD COLUMN sound_key TEXT NOT NULL DEFAULT ''")
+    if "sound_seconds" not in cols:
+        conn.execute("ALTER TABLE timer_runs ADD COLUMN sound_seconds INTEGER NOT NULL DEFAULT 0")
+    if "sound_volume" not in cols:
+        conn.execute("ALTER TABLE timer_runs ADD COLUMN sound_volume INTEGER NOT NULL DEFAULT 80")
     conn.commit()
 
 
@@ -183,7 +619,7 @@ def get_todo_board(conn, project_id: int) -> dict | None:
     columns = []
     for col in conn.execute(
         """
-        SELECT id, title, color_key, sort_order
+        SELECT id, title, color_key, sort_order, collapsed
         FROM todo_columns
         WHERE project_id = ?
         ORDER BY sort_order ASC, id ASC
@@ -208,6 +644,7 @@ def get_todo_board(conn, project_id: int) -> dict | None:
                 "title": col["title"],
                 "color_key": col["color_key"],
                 "sort_order": col["sort_order"],
+                "collapsed": bool(col["collapsed"]),
                 "cards": cards,
             }
         )
@@ -699,6 +1136,33 @@ def init_db():
             sort_order INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS timer_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL DEFAULT '',
+            duration_seconds INTEGER NOT NULL,
+            remaining_seconds INTEGER NOT NULL,
+            running_since TEXT,
+            ended_at TEXT,
+            created_at TEXT NOT NULL,
+            sound_key TEXT NOT NULL DEFAULT '',
+            sound_seconds INTEGER NOT NULL DEFAULT 0,
+            sound_volume INTEGER NOT NULL DEFAULT 80
+        );
+        CREATE TABLE IF NOT EXISTS knowledge_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            title_norm TEXT NOT NULL UNIQUE,
+            body TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS knowledge_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL REFERENCES knowledge_notes(id) ON DELETE CASCADE,
+            target_title TEXT NOT NULL,
+            target_title_norm TEXT NOT NULL,
+            target_id INTEGER REFERENCES knowledge_notes(id) ON DELETE SET NULL
+        );
         """
     )
     migrate_db(db)
@@ -746,6 +1210,8 @@ def inject_active_tasks_panel():
         "active_tasks": list_active_tasks(conn),
         "panel_work_day_id": panel_work_day_id,
         "nav_active_work_day_id": active["work_day_id"] if active else None,
+        "timer_active": active_timer_run(conn),
+        "fmt_duration": fmt_duration,
     }
 
 
@@ -779,6 +1245,214 @@ def active_session(conn):
     return dict(row) if row else None
 
 
+def parse_timer_duration(form) -> int | None:
+    def _num(key: str) -> int:
+        raw = (form.get(key) or "").strip()
+        if not raw:
+            return 0
+        try:
+            return max(0, int(raw))
+        except (TypeError, ValueError):
+            return 0
+
+    total = _num("hours") * 3600 + _num("minutes") * 60 + _num("seconds")
+    preset = (form.get("preset_seconds") or "").strip()
+    if preset.isdigit():
+        total = max(total, int(preset))
+    if total <= 0:
+        return None
+    return min(total, 24 * 3600)
+
+
+def list_custom_timer_sounds() -> list[dict]:
+    CUSTOM_SOUNDS_DIR.mkdir(parents=True, exist_ok=True)
+    items = []
+    for p in sorted(CUSTOM_SOUNDS_DIR.iterdir()):
+        if not p.is_file() or p.name.startswith("."):
+            continue
+        if p.suffix.lower() not in ALLOWED_SOUND_EXT:
+            continue
+        items.append({"key": f"custom:{p.name}", "title": p.stem, "filename": p.name})
+    return items
+
+
+def timer_sound_file(sound_key: str) -> Path | None:
+    key = (sound_key or "").strip()
+    if not key or key == "none":
+        return None
+    if key.startswith("custom:"):
+        name = Path(key.split(":", 1)[1]).name
+        if not name:
+            return None
+        path = (CUSTOM_SOUNDS_DIR / name).resolve()
+        try:
+            path.relative_to(CUSTOM_SOUNDS_DIR.resolve())
+        except ValueError:
+            return None
+        if path.is_file() and path.suffix.lower() in ALLOWED_SOUND_EXT:
+            return path
+        return None
+    allowed = {item[0] for item in BUILTIN_TIMER_SOUNDS}
+    if key not in allowed:
+        return None
+    path = TIMER_SOUNDS_DIR / f"{key}.wav"
+    return path if path.is_file() else None
+
+
+def timer_sound_url(sound_key: str) -> str:
+    path = timer_sound_file(sound_key)
+    if not path:
+        return ""
+    rel = path.relative_to(Path(__file__).parent / "static").as_posix()
+    return url_for("static", filename=rel)
+
+
+def save_custom_timer_sound(uploaded) -> str | None:
+    raw_name = uploaded.filename or "signal.wav"
+    ext = Path(raw_name).suffix.lower()
+    if ext not in ALLOWED_SOUND_EXT:
+        return None
+    filename = secure_filename(raw_name)
+    if not filename or filename.startswith("."):
+        filename = f"signal{ext}"
+    data = uploaded.read(MAX_CUSTOM_SOUND_BYTES + 1)
+    if not data or len(data) > MAX_CUSTOM_SOUND_BYTES:
+        return None
+    CUSTOM_SOUNDS_DIR.mkdir(parents=True, exist_ok=True)
+    dest = CUSTOM_SOUNDS_DIR / filename
+    stem = Path(filename).stem
+    n = 1
+    while dest.exists():
+        dest = CUSTOM_SOUNDS_DIR / f"{stem}_{n}{ext}"
+        n += 1
+    dest.write_bytes(data)
+    return dest.name
+
+
+def parse_timer_sound(form, files) -> tuple[str, int, int]:
+    key = (form.get("sound_key") or "").strip()
+    uploaded = files.get("sound_file") if files is not None else None
+    if uploaded and getattr(uploaded, "filename", ""):
+        saved = save_custom_timer_sound(uploaded)
+        if saved:
+            key = f"custom:{saved}"
+    if key == "none":
+        key = ""
+    if key and not timer_sound_file(key):
+        key = ""
+    raw_sec = (form.get("sound_seconds") or "").strip()
+    try:
+        seconds = int(raw_sec) if raw_sec else 0
+    except ValueError:
+        seconds = 0
+    seconds = max(0, min(60, seconds))
+    raw_vol = (form.get("sound_volume") or "80").strip()
+    try:
+        volume = int(raw_vol)
+    except ValueError:
+        volume = 80
+    volume = max(1, min(100, volume))
+    if not key:
+        seconds = 0
+        volume = 80
+    return key, seconds, volume
+
+
+def timer_remaining(run: dict) -> float:
+    rem = float(run["remaining_seconds"] or 0)
+    if run.get("running_since"):
+        rem -= session_duration_seconds(run["running_since"], None)
+    return max(0.0, rem)
+
+
+def _complete_timer_run(conn, run_id: int):
+    conn.execute(
+        """
+        UPDATE timer_runs
+        SET remaining_seconds = 0, running_since = NULL, ended_at = ?
+        WHERE id = ? AND ended_at IS NULL
+        """,
+        (iso(utc_now()), run_id),
+    )
+
+
+def active_timer_run(conn) -> dict | None:
+    row = conn.execute(
+        """
+        SELECT id, name, duration_seconds, remaining_seconds, running_since, ended_at, created_at,
+               sound_key, sound_seconds, sound_volume
+        FROM timer_runs
+        WHERE ended_at IS NULL
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if not row:
+        return None
+    run = dict(row)
+    live = timer_remaining(run)
+    if live <= 0:
+        _complete_timer_run(conn, run["id"])
+        conn.commit()
+        return None
+    run["remaining_live"] = round(live, 2)
+    run["paused"] = not run["running_since"]
+    run["sound_url"] = timer_sound_url(run.get("sound_key") or "")
+    run["sound_seconds"] = int(run.get("sound_seconds") or 0)
+    run["sound_volume"] = int(run.get("sound_volume") or 80)
+    return run
+
+
+def list_timer_history(conn, limit: int = 40) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT id, name, duration_seconds, remaining_seconds, ended_at, created_at
+        FROM timer_runs
+        WHERE ended_at IS NOT NULL
+        ORDER BY id DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    out = []
+    for r in rows:
+        remaining = int(r["remaining_seconds"] or 0)
+        elapsed = max(0, int(r["duration_seconds"]) - remaining)
+        out.append(
+            {
+                "id": r["id"],
+                "name": r["name"] or "Таймер",
+                "duration_seconds": r["duration_seconds"],
+                "remaining_seconds": remaining,
+                "elapsed_seconds": elapsed,
+                "completed": remaining <= 0,
+                "ended_at": r["ended_at"],
+                "created_at": r["created_at"],
+            }
+        )
+    return out
+
+
+def cancel_open_timer_runs(conn):
+    now = iso(utc_now())
+    for row in conn.execute(
+        """
+        SELECT id, remaining_seconds, running_since
+        FROM timer_runs
+        WHERE ended_at IS NULL
+        """
+    ):
+        rem = timer_remaining(dict(row))
+        conn.execute(
+            """
+            UPDATE timer_runs
+            SET remaining_seconds = ?, running_since = NULL, ended_at = ?
+            WHERE id = ?
+            """,
+            (int(round(rem)), now, row["id"]),
+        )
+
+
 def session_duration_seconds(started_at: str, ended_at: str | None) -> float:
     start = parse_iso(started_at)
     end = parse_iso(ended_at) if ended_at else utc_now()
@@ -802,6 +1476,59 @@ def fmt_duration(seconds: float) -> str:
     if h:
         return f"{h}:{m:02d}:{sec:02d}"
     return f"{m}:{sec:02d}"
+
+
+def iso_to_local_input(iso_s: str) -> str:
+    return parse_iso(iso_s).astimezone().replace(microsecond=0).strftime("%Y-%m-%dT%H:%M")
+
+
+def parse_local_datetime_input(s: str | None) -> str | None:
+    s = (s or "").strip()
+    if not s:
+        return None
+    dt = datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+    return iso(dt)
+
+
+def task_sessions_payload(conn, work_day_id: int, task_id: int) -> dict | None:
+    task = conn.execute(
+        "SELECT id, name FROM tasks WHERE id = ? AND work_day_id = ?",
+        (task_id, work_day_id),
+    ).fetchone()
+    if not task:
+        return None
+    sessions = []
+    for s in conn.execute(
+        """
+        SELECT id, started_at, ended_at FROM work_sessions
+        WHERE task_id = ? AND work_day_id = ?
+        ORDER BY started_at
+        """,
+        (task_id, work_day_id),
+    ):
+        sec = session_duration_seconds(s["started_at"], s["ended_at"])
+        sessions.append(
+            {
+                "id": s["id"],
+                "started_at": s["started_at"],
+                "ended_at": s["ended_at"],
+                "started_at_local": iso_to_local_input(s["started_at"]),
+                "ended_at_local": iso_to_local_input(s["ended_at"]) if s["ended_at"] else "",
+                "seconds": round(sec, 2),
+                "duration": fmt_duration(sec),
+                "is_active": s["ended_at"] is None,
+            }
+        )
+    total_seconds = sum(x["seconds"] for x in sessions)
+    return {
+        "id": task["id"],
+        "name": task["name"],
+        "seconds": round(total_seconds, 2),
+        "duration": fmt_duration(total_seconds),
+        "sessions": sessions,
+    }
 
 
 def fmt_worked(seconds: float) -> str:
@@ -1497,6 +2224,96 @@ def delete_task(work_day_id: int, task_id: int):
     return redirect(url_for("work_day_view", work_day_id=work_day_id))
 
 
+@app.get("/work-days/<int:work_day_id>/tasks/<int:task_id>/data")
+def task_data(work_day_id: int, task_id: int):
+    conn = get_db()
+    data = task_sessions_payload(conn, work_day_id, task_id)
+    if not data:
+        abort(404)
+    return jsonify(data)
+
+
+@app.post("/work-days/<int:work_day_id>/tasks/<int:task_id>/edit")
+def task_edit(work_day_id: int, task_id: int):
+    conn = get_db()
+    task = conn.execute(
+        "SELECT id FROM tasks WHERE id = ? AND work_day_id = ?",
+        (task_id, work_day_id),
+    ).fetchone()
+    if not task:
+        abort(404)
+
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "Название не может быть пустым"}), 400
+
+    duplicate = conn.execute(
+        """
+        SELECT id FROM tasks
+        WHERE work_day_id = ? AND name = ? COLLATE NOCASE AND id != ?
+        """,
+        (work_day_id, name, task_id),
+    ).fetchone()
+    if duplicate:
+        return jsonify({"error": "Задача с таким названием уже есть в этом дне"}), 400
+
+    sessions_data = body.get("sessions") or []
+    delete_ids = [int(x) for x in (body.get("delete_session_ids") or []) if str(x).isdigit()]
+
+    active_count = sum(1 for s in sessions_data if not (s.get("ended_at") or "").strip())
+    if active_count > 1:
+        return jsonify({"error": "Только одна сессия может быть без времени окончания"}), 400
+
+    for sid in delete_ids:
+        row = conn.execute(
+            """
+            SELECT id FROM work_sessions
+            WHERE id = ? AND task_id = ? AND work_day_id = ?
+            """,
+            (sid, task_id, work_day_id),
+        ).fetchone()
+        if row:
+            conn.execute("DELETE FROM work_sessions WHERE id = ?", (sid,))
+
+    if active_count:
+        stop_all_open_sessions(conn)
+
+    for sess in sessions_data:
+        sid = sess.get("id")
+        if not sid:
+            continue
+        row = conn.execute(
+            """
+            SELECT id FROM work_sessions
+            WHERE id = ? AND task_id = ? AND work_day_id = ?
+            """,
+            (sid, task_id, work_day_id),
+        ).fetchone()
+        if not row:
+            continue
+        started_local = (sess.get("started_at") or "").strip()
+        ended_local = (sess.get("ended_at") or "").strip()
+        if not started_local:
+            return jsonify({"error": "Укажите время начала каждой сессии"}), 400
+        try:
+            started_at = parse_local_datetime_input(started_local)
+            ended_at = parse_local_datetime_input(ended_local) if ended_local else None
+        except ValueError:
+            return jsonify({"error": "Некорректный формат даты или времени"}), 400
+        if ended_at and parse_iso(ended_at) <= parse_iso(started_at):
+            return jsonify({"error": "Время окончания должно быть позже начала"}), 400
+        conn.execute(
+            "UPDATE work_sessions SET started_at = ?, ended_at = ? WHERE id = ?",
+            (started_at, ended_at, sid),
+        )
+
+    conn.execute("UPDATE tasks SET name = ? WHERE id = ?", (name, task_id))
+    conn.commit()
+    data = task_sessions_payload(conn, work_day_id, task_id)
+    return jsonify({"success": True, "task": data})
+
+
 @app.post("/work-days/<int:work_day_id>/tasks/<int:task_id>/start")
 def start_task(work_day_id: int, task_id: int):
     conn = get_db()
@@ -1543,6 +2360,106 @@ def stop_timer(work_day_id: int):
         )
         conn.commit()
     return redirect(url_for("work_day_view", work_day_id=work_day_id))
+
+
+@app.get("/timer")
+def timer_home():
+    conn = get_db()
+    active = active_timer_run(conn)
+    history = list_timer_history(conn)
+    return render_template(
+        "timer.html",
+        active=active,
+        history=history,
+        fmt=fmt_duration,
+        fmt_created=fmt_created,
+        builtin_sounds=BUILTIN_TIMER_SOUNDS,
+        custom_sounds=list_custom_timer_sounds(),
+    )
+
+
+@app.post("/timer/start")
+def timer_start():
+    name = (request.form.get("name") or "").strip()
+    duration = parse_timer_duration(request.form)
+    if not duration:
+        return redirect(url_for("timer_home"))
+    sound_key, sound_seconds, sound_volume = parse_timer_sound(request.form, request.files)
+    conn = get_db()
+    cancel_open_timer_runs(conn)
+    now = iso(utc_now())
+    conn.execute(
+        """
+        INSERT INTO timer_runs (
+            name, duration_seconds, remaining_seconds, running_since, ended_at, created_at,
+            sound_key, sound_seconds, sound_volume
+        )
+        VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)
+        """,
+        (name, duration, duration, now, now, sound_key, sound_seconds, sound_volume),
+    )
+    conn.commit()
+    return redirect(url_for("timer_home"))
+
+
+@app.post("/timer/pause")
+def timer_pause():
+    conn = get_db()
+    cur = active_timer_run(conn)
+    if cur and cur.get("running_since"):
+        rem = int(round(timer_remaining(cur)))
+        conn.execute(
+            """
+            UPDATE timer_runs
+            SET remaining_seconds = ?, running_since = NULL
+            WHERE id = ?
+            """,
+            (rem, cur["id"]),
+        )
+        conn.commit()
+    return redirect_back("timer_home")
+
+
+@app.post("/timer/resume")
+def timer_resume():
+    conn = get_db()
+    cur = active_timer_run(conn)
+    if cur and not cur.get("running_since"):
+        conn.execute(
+            "UPDATE timer_runs SET running_since = ? WHERE id = ?",
+            (iso(utc_now()), cur["id"]),
+        )
+        conn.commit()
+    return redirect_back("timer_home")
+
+
+@app.post("/timer/stop")
+def timer_stop():
+    conn = get_db()
+    cancel_open_timer_runs(conn)
+    conn.commit()
+    return redirect_back("timer_home")
+
+
+@app.post("/timer/complete")
+def timer_complete():
+    conn = get_db()
+    cur = active_timer_run(conn)
+    if cur:
+        _complete_timer_run(conn, cur["id"])
+        conn.commit()
+    wants_json = "application/json" in (request.headers.get("Accept") or "")
+    if wants_json:
+        return jsonify({"success": True, "active": None})
+    return redirect_back("timer_home")
+
+
+@app.post("/timer/runs/<int:run_id>/delete")
+def timer_delete_run(run_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM timer_runs WHERE id = ? AND ended_at IS NOT NULL", (run_id,))
+    conn.commit()
+    return redirect(url_for("timer_home"))
 
 
 @app.get("/todo")
@@ -1621,6 +2538,91 @@ def todo_delete_project(project_id: int):
     conn.execute("DELETE FROM todo_projects WHERE id = ?", (project_id,))
     conn.commit()
     return redirect(url_for("todo_home"))
+
+
+@app.post("/todo/projects/<int:project_id>/columns")
+def todo_create_column(project_id: int):
+    title = (request.form.get("title") or "").strip()
+    conn = get_db()
+    exists = conn.execute(
+        "SELECT 1 FROM todo_projects WHERE id = ?", (project_id,)
+    ).fetchone()
+    if not exists:
+        abort(404)
+    if not title:
+        return redirect(url_for("todo_project_view", project_id=project_id))
+    max_order = conn.execute(
+        "SELECT COALESCE(MAX(sort_order), -1) FROM todo_columns WHERE project_id = ?",
+        (project_id,),
+    ).fetchone()[0]
+    conn.execute(
+        """
+        INSERT INTO todo_columns (project_id, title, color_key, sort_order)
+        VALUES (?, ?, ?, ?)
+        """,
+        (project_id, title, "planned", max_order + 1),
+    )
+    conn.commit()
+    return redirect(url_for("todo_project_view", project_id=project_id))
+
+
+@app.post("/todo/columns/<int:column_id>/update")
+def todo_update_column(column_id: int):
+    conn = get_db()
+    col = conn.execute(
+        "SELECT id, project_id FROM todo_columns WHERE id = ?",
+        (column_id,),
+    ).fetchone()
+    if not col:
+        abort(404)
+    title = (request.form.get("title") or "").strip()
+    if not title:
+        return redirect(url_for("todo_project_view", project_id=col["project_id"]))
+    conn.execute(
+        "UPDATE todo_columns SET title = ? WHERE id = ?",
+        (title, column_id),
+    )
+    conn.commit()
+    return redirect(url_for("todo_project_view", project_id=col["project_id"]))
+
+
+@app.post("/todo/columns/<int:column_id>/delete")
+def todo_delete_column(column_id: int):
+    conn = get_db()
+    col = conn.execute(
+        "SELECT id, project_id FROM todo_columns WHERE id = ?",
+        (column_id,),
+    ).fetchone()
+    if not col:
+        abort(404)
+    conn.execute("DELETE FROM todo_cards WHERE column_id = ?", (column_id,))
+    conn.execute("DELETE FROM todo_columns WHERE id = ?", (column_id,))
+    conn.commit()
+    return redirect(url_for("todo_project_view", project_id=col["project_id"]))
+
+
+@app.post("/todo/columns/<int:column_id>/collapse")
+def todo_collapse_column(column_id: int):
+    conn = get_db()
+    col = conn.execute(
+        "SELECT id, project_id FROM todo_columns WHERE id = ?",
+        (column_id,),
+    ).fetchone()
+    if not col:
+        abort(404)
+    data = request.get_json(silent=True)
+    if data is not None and "collapsed" in data:
+        collapsed = bool(data.get("collapsed"))
+    else:
+        collapsed = (request.form.get("collapsed") or "0").strip() == "1"
+    conn.execute(
+        "UPDATE todo_columns SET collapsed = ? WHERE id = ?",
+        (1 if collapsed else 0, column_id),
+    )
+    conn.commit()
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify({"success": True, "collapsed": collapsed})
+    return redirect(url_for("todo_project_view", project_id=col["project_id"]))
 
 
 @app.post("/todo/columns/<int:column_id>/cards")
@@ -1844,6 +2846,219 @@ def api_state():
         "server_now": iso(utc_now()),
     }
     return jsonify(payload)
+
+
+@app.get("/api/timer-state")
+def api_timer_state():
+    conn = get_db()
+    active = active_timer_run(conn)
+    payload = None
+    if active:
+        payload = {
+            "id": active["id"],
+            "name": active["name"] or "Таймер",
+            "duration_seconds": active["duration_seconds"],
+            "remaining_seconds": active["remaining_seconds"],
+            "remaining_live": active["remaining_live"],
+            "running_since": active["running_since"],
+            "paused": active["paused"],
+            "sound_url": active.get("sound_url") or "",
+            "sound_seconds": active.get("sound_seconds") or 0,
+            "sound_volume": active.get("sound_volume") or 80,
+        }
+    return jsonify(
+        {
+            "active": payload,
+            "server_now": iso(utc_now()),
+        }
+    )
+
+
+@app.get("/knowledge")
+def knowledge_home():
+    conn = get_db()
+    notes = list_knowledge_notes(conn)
+    graph = build_knowledge_graph(conn)
+    return render_template(
+        "knowledge.html",
+        notes=notes,
+        graph=graph,
+        fmt_created=fmt_created,
+    )
+
+
+@app.post("/knowledge/import-todo")
+def knowledge_import_todo():
+    conn = get_db()
+    result = import_knowledge_from_todo(conn)
+    wants_json = (
+        request.headers.get("X-Requested-With") == "fetch"
+        or "application/json" in (request.accept_mimetypes.best or "")
+    )
+    if wants_json:
+        return jsonify(
+            {
+                "ok": True,
+                "projects": result["projects"],
+                "cards": result["cards"],
+                "notes": result["notes"],
+                "graph": result["graph"],
+                "notes_list": list_knowledge_notes(conn),
+            }
+        )
+    return redirect(url_for("knowledge_home"))
+
+
+@app.get("/api/knowledge/graph")
+def api_knowledge_graph():
+    conn = get_db()
+    return jsonify(build_knowledge_graph(conn))
+
+
+@app.get("/api/knowledge/notes")
+def api_knowledge_notes():
+    conn = get_db()
+    return jsonify({"notes": list_knowledge_notes(conn)})
+
+
+@app.get("/api/knowledge/notes/<int:note_id>")
+def api_knowledge_note(note_id: int):
+    conn = get_db()
+    note = get_knowledge_note(conn, note_id)
+    if not note:
+        abort(404)
+    return jsonify(note)
+
+
+@app.post("/api/knowledge/notes")
+def api_knowledge_create_note():
+    data = request.get_json(silent=True) or {}
+    title = re.sub(r"\s+", " ", (data.get("title") or "").strip())
+    body = data.get("body") if isinstance(data.get("body"), str) else ""
+    if not title:
+        return jsonify({"error": "Укажите название"}), 400
+    title_norm = normalize_note_title(title)
+    conn = get_db()
+    exists = conn.execute(
+        "SELECT id FROM knowledge_notes WHERE title_norm = ?",
+        (title_norm,),
+    ).fetchone()
+    if exists:
+        return jsonify({"error": "Заметка с таким названием уже есть", "id": exists["id"]}), 409
+    now = iso(utc_now())
+    cur = conn.execute(
+        """
+        INSERT INTO knowledge_notes (title, title_norm, body, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (title, title_norm, body, now, now),
+    )
+    note_id = cur.lastrowid
+    rebuild_note_links(conn, note_id, body)
+    resolve_incoming_links(conn, note_id, title_norm)
+    conn.commit()
+    note = get_knowledge_note(conn, note_id)
+    return jsonify({"note": note, "graph": build_knowledge_graph(conn)}), 201
+
+
+@app.post("/api/knowledge/notes/<int:note_id>")
+def api_knowledge_update_note(note_id: int):
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    existing = conn.execute(
+        "SELECT id, title_norm FROM knowledge_notes WHERE id = ?",
+        (note_id,),
+    ).fetchone()
+    if not existing:
+        abort(404)
+
+    title = data.get("title")
+    body = data.get("body")
+    updates = []
+    values = []
+
+    new_title_norm = existing["title_norm"]
+    if title is not None:
+        title = re.sub(r"\s+", " ", str(title).strip())
+        if not title:
+            return jsonify({"error": "Укажите название"}), 400
+        new_title_norm = normalize_note_title(title)
+        clash = conn.execute(
+            "SELECT id FROM knowledge_notes WHERE title_norm = ? AND id != ?",
+            (new_title_norm, note_id),
+        ).fetchone()
+        if clash:
+            return jsonify({"error": "Заметка с таким названием уже есть", "id": clash["id"]}), 409
+        updates.extend(["title = ?", "title_norm = ?"])
+        values.extend([title, new_title_norm])
+
+    if body is not None:
+        if not isinstance(body, str):
+            return jsonify({"error": "Некорректный текст"}), 400
+        updates.append("body = ?")
+        values.append(body)
+
+    if not updates:
+        note = get_knowledge_note(conn, note_id)
+        return jsonify({"note": note, "graph": build_knowledge_graph(conn)})
+
+    updates.append("updated_at = ?")
+    values.append(iso(utc_now()))
+    values.append(note_id)
+    conn.execute(
+        f"UPDATE knowledge_notes SET {', '.join(updates)} WHERE id = ?",
+        values,
+    )
+
+    if body is not None:
+        rebuild_note_links(conn, note_id, body)
+    if title is not None:
+        conn.execute(
+            "UPDATE knowledge_links SET target_id = NULL WHERE target_id = ?",
+            (note_id,),
+        )
+        resolve_incoming_links(conn, note_id, new_title_norm)
+        # Refresh target_title display for resolved links pointing here
+        display_title = title if title is not None else None
+        if display_title is None:
+            display_title = conn.execute(
+                "SELECT title FROM knowledge_notes WHERE id = ?", (note_id,)
+            ).fetchone()["title"]
+        conn.execute(
+            """
+            UPDATE knowledge_links
+            SET target_title = ?, target_title_norm = ?
+            WHERE target_id = ?
+            """,
+            (display_title, new_title_norm, note_id),
+        )
+
+    conn.commit()
+    note = get_knowledge_note(conn, note_id)
+    return jsonify({"note": note, "graph": build_knowledge_graph(conn)})
+
+
+@app.post("/api/knowledge/notes/<int:note_id>/delete")
+def api_knowledge_delete_note(note_id: int):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, title_norm FROM knowledge_notes WHERE id = ?",
+        (note_id,),
+    ).fetchone()
+    if not row:
+        abort(404)
+    conn.execute(
+        """
+        UPDATE knowledge_links
+        SET target_id = NULL
+        WHERE target_id = ?
+        """,
+        (note_id,),
+    )
+    conn.execute("DELETE FROM knowledge_links WHERE source_id = ?", (note_id,))
+    conn.execute("DELETE FROM knowledge_notes WHERE id = ?", (note_id,))
+    conn.commit()
+    return jsonify({"ok": True, "graph": build_knowledge_graph(conn)})
 
 
 def main():

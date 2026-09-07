@@ -10,6 +10,10 @@
     if (!el) return;
     el.hidden = false;
     document.body.classList.add("modal-open");
+    const focusEl = el.querySelector("input, textarea");
+    if (focusEl) {
+      setTimeout(() => focusEl.focus(), 0);
+    }
   }
 
   function closeModal(el) {
@@ -40,19 +44,69 @@
     el.addEventListener("click", () => closeModal(el));
   });
 
+  function openEditColumn(column) {
+    const form = document.getElementById("form-edit-column");
+    const titleInput = document.getElementById("edit-column-title");
+    if (!form || !titleInput || !column) return;
+    form.action = (urls.updateColumn || "").replace("__ID__", column.dataset.columnId);
+    titleInput.value = column.dataset.columnTitle || "";
+    openModal("modal-edit-column");
+  }
+
+  function setColumnCollapsed(column, collapsed) {
+    const btn = column.querySelector(".kanban-collapse-btn");
+    const hidden = column.querySelector('.js-collapse-column input[name="collapsed"]');
+    column.classList.toggle("is-collapsed", collapsed);
+    if (hidden) hidden.value = collapsed ? "0" : "1";
+    if (btn) {
+      btn.textContent = collapsed ? "›" : "‹";
+      btn.title = collapsed ? "Развернуть" : "Свернуть";
+      btn.setAttribute("aria-label", collapsed ? "Развернуть колонку" : "Свернуть колонку");
+      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    }
+  }
+
   board.addEventListener("click", (event) => {
     const editBtn = event.target.closest(".js-edit-card");
-    if (!editBtn) return;
-    const card = editBtn.closest(".kanban-card");
-    if (!card) return;
-    const form = document.getElementById("form-edit-card");
-    const titleInput = document.getElementById("edit-card-title");
-    const noteInput = document.getElementById("edit-card-note");
-    if (!form || !titleInput || !noteInput) return;
-    form.action = (urls.updateCard || "").replace("__ID__", card.dataset.cardId);
-    titleInput.value = card.dataset.title || "";
-    noteInput.value = card.dataset.note || "";
-    openModal("modal-edit-card");
+    if (editBtn) {
+      const card = editBtn.closest(".kanban-card");
+      if (!card) return;
+      const form = document.getElementById("form-edit-card");
+      const titleInput = document.getElementById("edit-card-title");
+      const noteInput = document.getElementById("edit-card-note");
+      if (!form || !titleInput || !noteInput) return;
+      form.action = (urls.updateCard || "").replace("__ID__", card.dataset.cardId);
+      titleInput.value = card.dataset.title || "";
+      noteInput.value = card.dataset.note || "";
+      openModal("modal-edit-card");
+      return;
+    }
+
+    const editCol = event.target.closest(".js-edit-column");
+    if (editCol) {
+      openEditColumn(editCol.closest(".kanban-column"));
+    }
+  });
+
+  board.addEventListener("submit", (event) => {
+    const form = event.target.closest(".js-collapse-column");
+    if (!form) return;
+    event.preventDefault();
+    const column = form.closest(".kanban-column");
+    if (!column) return;
+    const nextCollapsed = !column.classList.contains("is-collapsed");
+    setColumnCollapsed(column, nextCollapsed);
+    const collapseUrl = (urls.collapseColumn || "").replace("__ID__", column.dataset.columnId);
+    fetch(collapseUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "fetch",
+      },
+      body: JSON.stringify({ collapsed: nextCollapsed }),
+    }).catch(() => {
+      setColumnCollapsed(column, !nextCollapsed);
+    });
   });
 
   function syncEmptyState(zone) {
@@ -129,6 +183,33 @@
     });
   }
 
+  function dropOnZone(zone, clientY) {
+    if (!draggedCard || !zone) return;
+    const fromZone = draggedCard.closest("[data-drop-zone]");
+    const collapsed = zone.closest(".kanban-column")?.classList.contains("is-collapsed");
+    if (collapsed) {
+      const empty = zone.querySelector(".kanban-empty");
+      if (empty) zone.insertBefore(draggedCard, empty);
+      else zone.appendChild(draggedCard);
+    } else {
+      insertAt(zone, draggedCard, clientY);
+    }
+    hideIndicators();
+    syncEmptyState(fromZone);
+    syncEmptyState(zone);
+
+    const column = zone.closest(".kanban-column");
+    const columnId = column && column.dataset.columnId;
+    const cards = Array.from(zone.querySelectorAll(".kanban-card"));
+    const order = cards.indexOf(draggedCard);
+    const cardId = draggedCard.dataset.cardId;
+    if (!columnId || cardId == null || order < 0) return;
+
+    moveCard(Number(cardId), Number(columnId), order).catch(() => {
+      window.location.reload();
+    });
+  }
+
   board.querySelectorAll(".kanban-card").forEach((card) => {
     card.addEventListener("dragstart", (event) => {
       draggedCard = card;
@@ -148,6 +229,12 @@
     zone.addEventListener("dragover", (event) => {
       event.preventDefault();
       if (!draggedCard) return;
+      const column = zone.closest(".kanban-column");
+      if (column && column.classList.contains("is-collapsed")) {
+        hideIndicators();
+        column.classList.add("drag-over");
+        return;
+      }
       showIndicator(zone, event.clientY);
     });
     zone.addEventListener("dragleave", (event) => {
@@ -157,23 +244,22 @@
     });
     zone.addEventListener("drop", (event) => {
       event.preventDefault();
+      dropOnZone(zone, event.clientY);
+    });
+  });
+
+  board.querySelectorAll(".kanban-column").forEach((column) => {
+    column.addEventListener("dragover", (event) => {
+      if (!column.classList.contains("is-collapsed")) return;
+      event.preventDefault();
       if (!draggedCard) return;
-      const fromZone = draggedCard.closest("[data-drop-zone]");
-      insertAt(zone, draggedCard, event.clientY);
       hideIndicators();
-      syncEmptyState(fromZone);
-      syncEmptyState(zone);
-
-      const column = zone.closest(".kanban-column");
-      const columnId = column && column.dataset.columnId;
-      const cards = Array.from(zone.querySelectorAll(".kanban-card"));
-      const order = cards.indexOf(draggedCard);
-      const cardId = draggedCard.dataset.cardId;
-      if (!columnId || cardId == null || order < 0) return;
-
-      moveCard(Number(cardId), Number(columnId), order).catch(() => {
-        window.location.reload();
-      });
+      column.classList.add("drag-over");
+    });
+    column.addEventListener("drop", (event) => {
+      if (!column.classList.contains("is-collapsed")) return;
+      event.preventDefault();
+      dropOnZone(column.querySelector("[data-drop-zone]"), event.clientY);
     });
   });
 })();

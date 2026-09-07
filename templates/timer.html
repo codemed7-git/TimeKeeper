@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Таймер{% endblock %}
+
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Таймер</h1>
+    <p class="subtitle muted">Обратный отсчёт для коротких задач — не входит в рабочий день</p>
+  </div>
+</header>
+
+<section class="card timer-card">
+  {% if active %}
+  <div
+    class="timer-face{% if active.paused %} is-paused{% endif %}"
+    id="timer-face"
+    data-remaining="{{ active.remaining_seconds }}"
+    data-running-since="{{ active.running_since or '' }}"
+    data-complete-url="{{ url_for('timer_complete') }}"
+    data-sound-url="{{ active.sound_url or '' }}"
+    data-sound-seconds="{{ active.sound_seconds or 0 }}"
+    data-sound-volume="{{ active.sound_volume or 80 }}"
+  >
+    <div class="timer-face__name">{{ active.name or 'Таймер' }}</div>
+    <div class="timer-face__time mono" id="timer-face-time">{{ fmt(active.remaining_live) }}</div>
+    <div class="timer-face__meta muted">из {{ fmt(active.duration_seconds) }}{% if active.paused %} · пауза{% endif %}</div>
+    <div class="timer-face__actions">
+      {% if active.paused %}
+      <form method="post" action="{{ url_for('timer_resume') }}" class="inline-form">
+        <button type="submit" class="btn btn--primary">Продолжить</button>
+      </form>
+      {% else %}
+      <form method="post" action="{{ url_for('timer_pause') }}" class="inline-form">
+        <button type="submit" class="btn btn--warning">Пауза</button>
+      </form>
+      {% endif %}
+      <form method="post" action="{{ url_for('timer_stop') }}" class="inline-form">
+        <button type="submit" class="btn btn--ghost">Стоп</button>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <form method="post" action="{{ url_for('timer_start') }}" class="timer-setup" id="timer-setup" enctype="multipart/form-data">
+    <label class="field">
+      <span class="field-label">Задача</span>
+      <input
+        type="text"
+        name="name"
+        placeholder="Необязательно"
+        maxlength="200"
+        class="input"
+        autocomplete="off"
+        autofocus
+      >
+    </label>
+    <div class="timer-setup__time">
+      <label class="field field--compact">
+        <span class="field-label">Часы</span>
+        <input type="number" name="hours" id="timer-hours" min="0" max="24" value="0" class="input input--compact timer-setup__num">
+      </label>
+      <label class="field field--compact">
+        <span class="field-label">Минуты</span>
+        <input type="number" name="minutes" id="timer-minutes" min="0" max="999" value="25" class="input input--compact timer-setup__num">
+      </label>
+      <label class="field field--compact">
+        <span class="field-label">Секунды</span>
+        <input type="number" name="seconds" id="timer-seconds" min="0" max="59" value="0" class="input input--compact timer-setup__num">
+      </label>
+    </div>
+    <div class="timer-presets" role="group" aria-label="Готовые интервалы">
+      <button type="button" class="btn btn--ghost btn--xs js-timer-preset" data-seconds="60">1 мин</button>
+      <button type="button" class="btn btn--ghost btn--xs js-timer-preset" data-seconds="300">5 мин</button>
+      <button type="button" class="btn btn--ghost btn--xs js-timer-preset" data-seconds="600">10 мин</button>
+      <button type="button" class="btn btn--ghost btn--xs js-timer-preset" data-seconds="900">15 мин</button>
+      <button type="button" class="btn btn--ghost btn--xs js-timer-preset" data-seconds="1500">25 мин</button>
+      <button type="button" class="btn btn--ghost btn--xs js-timer-preset" data-seconds="1800">30 мин</button>
+    </div>
+    <button type="submit" class="btn btn--primary">Старт</button>
+    <details class="timer-setup__extra">
+      <summary>Сигнал окончания (необязательно)</summary>
+      <div class="timer-setup__extra-body">
+        <label class="field">
+          <span class="field-label">Звук</span>
+          <div class="timer-sound-row">
+            <select name="sound_key" id="timer-sound-key" class="input input--compact">
+              <option value="none" selected>Без сигнала</option>
+              <optgroup label="Встроенные">
+                {% for key, title in builtin_sounds %}
+                <option value="{{ key }}" data-url="{{ url_for('static', filename='timer_sounds/' ~ key ~ '.wav') }}">{{ title }}</option>
+                {% endfor %}
+              </optgroup>
+              {% if custom_sounds %}
+              <optgroup label="Свои">
+                {% for s in custom_sounds %}
+                <option value="{{ s.key }}" data-url="{{ url_for('static', filename='timer_sounds/custom/' ~ s.filename) }}">{{ s.title }}</option>
+                {% endfor %}
+              </optgroup>
+              {% endif %}
+            </select>
+            <button type="button" class="btn btn--ghost btn--sm" id="timer-sound-preview">Прослушать</button>
+          </div>
+        </label>
+        <label class="field">
+          <span class="field-label">Свой файл (mp3, wav, ogg…)</span>
+          <input type="file" name="sound_file" id="timer-sound-file" class="input input--compact" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.webm">
+        </label>
+        <div class="timer-setup__time">
+          <label class="field field--compact">
+            <span class="field-label">Длительность сигнала, сек</span>
+            <input type="number" name="sound_seconds" id="timer-sound-seconds" min="0" max="60" value="" placeholder="весь файл" class="input input--compact">
+          </label>
+          <label class="field field--compact">
+            <span class="field-label">Громкость, %</span>
+            <input type="number" name="sound_volume" id="timer-sound-volume" min="1" max="100" value="80" class="input input--compact">
+          </label>
+        </div>
+        <p class="small-hint muted">0 или пусто — проиграть файл один раз. Можно не выбирать звук: таймер просто остановится.</p>
+      </div>
+    </details>
+  </form>
+  {% endif %}
+</section>
+
+{% if history %}
+<section class="card">
+  <h2 class="card-title">История</h2>
+  <ul class="timer-history">
+    {% for run in history %}
+    <li class="timer-history__row">
+      <div class="timer-history__main">
+        <span class="timer-history__name">{{ run.name }}</span>
+        <span class="timer-history__meta muted">
+          {{ fmt(run.duration_seconds) }}
+          · {% if run.completed %}готово{% else %}стоп на {{ fmt(run.elapsed_seconds) }}{% endif %}
+          · {{ fmt_created(run.created_at) }}
+        </span>
+      </div>
+      <form method="post" action="{{ url_for('timer_delete_run', run_id=run.id) }}" class="inline-form" onsubmit="return confirm('Удалить запись?');">
+        <button type="submit" class="btn btn--ghost btn--sm">Удалить</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    document.querySelectorAll('.js-timer-preset').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const total = parseInt(btn.dataset.seconds, 10) || 0;
+        const hours = document.getElementById('timer-hours');
+        const minutes = document.getElementById('timer-minutes');
+        const seconds = document.getElementById('timer-seconds');
+        if (!minutes || !seconds) return;
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const s = total % 60;
+        if (hours) hours.value = String(h);
+        minutes.value = String(m);
+        seconds.value = String(s);
+      });
+    });
+
+    const soundKey = document.getElementById('timer-sound-key');
+    const soundFile = document.getElementById('timer-sound-file');
+    const previewBtn = document.getElementById('timer-sound-preview');
+    let previewAudio = null;
+    function selectedSoundUrl() {
+      if (soundFile && soundFile.files && soundFile.files[0]) {
+        return URL.createObjectURL(soundFile.files[0]);
+      }
+      if (!soundKey) return '';
+      const opt = soundKey.selectedOptions[0];
+      if (!opt || opt.value === 'none') return '';
+      return opt.dataset.url || '';
+    }
+    if (previewBtn) {
+      previewBtn.addEventListener('click', () => {
+        const url = selectedSoundUrl();
+        if (!url) return;
+        if (previewAudio) {
+          previewAudio.pause();
+          previewAudio = null;
+        }
+        previewAudio = new Audio(url);
+        const vol = document.getElementById('timer-sound-volume');
+        previewAudio.volume = Math.max(0.01, Math.min(1, (parseInt(vol && vol.value, 10) || 80) / 100));
+        previewAudio.play().catch(() => {});
+      });
+    }
+  })();
+</script>
+{% endblock %}

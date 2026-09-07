@@ -4,33 +4,131 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Учёт времени{% endblock %}</title>
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem('tk-theme') || 'dark';
+        var style = localStorage.getItem('tk-style') || 'midnight';
+        if (theme !== 'light' && theme !== 'dark') theme = 'dark';
+        var styles = ['midnight', 'forest', 'sunset', 'graphite', 'ocean'];
+        if (styles.indexOf(style) < 0) style = 'midnight';
+        document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.setAttribute('data-style', style);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.setAttribute('data-style', 'midnight');
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 {% set ep = request.endpoint or '' %}
 {% set is_todo = ep.startswith('todo') %}
+{% set is_timer = ep.startswith('timer') %}
+{% set is_knowledge = ep.startswith('knowledge') %}
 {% set is_todo_board = ep == 'todo_project_view' %}
-<body class="{% if not is_todo %}has-active-panel{% endif %}{% if is_todo %} page-todo{% endif %}{% if is_todo_board %} page-todo-board{% endif %}">
+{% set is_work_days = not is_todo and not is_timer and not is_knowledge %}
+<body class="{% if is_work_days %}has-active-panel{% endif %}{% if is_todo %} page-todo{% endif %}{% if is_todo_board %} page-todo-board{% endif %}{% if is_knowledge %} page-knowledge{% endif %}">
   <div class="page">
     <nav class="app-nav" aria-label="Разделы">
-      <a
-        href="{% if is_todo and nav_active_work_day_id %}{{ url_for('work_day_view', work_day_id=nav_active_work_day_id) }}{% else %}{{ url_for('work_days_home') }}{% endif %}"
-        class="app-nav__link{% if not is_todo %} is-active{% endif %}"
-      >Рабочие дни</a>
-      <a
-        href="{{ url_for('todo_home') }}"
-        class="app-nav__link{% if is_todo %} is-active{% endif %}"
-      >TO-DO</a>
-      {% block app_nav %}{% endblock %}
+      <div class="app-nav__links">
+        <a
+          href="{% if (is_todo or is_timer or is_knowledge) and nav_active_work_day_id %}{{ url_for('work_day_view', work_day_id=nav_active_work_day_id) }}{% else %}{{ url_for('work_days_home') }}{% endif %}"
+          class="app-nav__link{% if is_work_days %} is-active{% endif %}"
+        >Рабочие дни</a>
+        <a
+          href="{{ url_for('todo_home') }}"
+          class="app-nav__link{% if is_todo %} is-active{% endif %}"
+        >TO-DO</a>
+        <a
+          href="{{ url_for('timer_home') }}"
+          class="app-nav__link{% if is_timer %} is-active{% endif %}"
+        >Таймер</a>
+        <a
+          href="{{ url_for('knowledge_home') }}"
+          class="app-nav__link{% if is_knowledge %} is-active{% endif %}"
+        >Граф знаний</a>
+        {% block app_nav %}{% endblock %}
+      </div>
+      <button
+        type="button"
+        class="app-nav__settings"
+        id="app-settings-open"
+        aria-label="Настройки"
+        title="Настройки"
+        data-open-modal="modal-app-settings"
+      >
+        <svg class="app-nav__settings-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+          <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.07 7.07 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.57.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.71 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.83 14.52a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.34.68.22l2.39-.96c.5.4 1.05.72 1.63.94l.36 2.54c.05.24.25.42.49.42h3.8c.24 0 .44-.18.49-.42l.36-2.54c.57-.23 1.12-.54 1.63-.94l2.39.96c.25.1.54 0 .68-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"/>
+        </svg>
+      </button>
     </nav>
-    <div class="page-layout{% if is_todo %} page-layout--full{% endif %}">
+    <div class="page-layout{% if is_todo or is_timer or is_knowledge %} page-layout--full{% endif %}">
       <div class="page-layout__main">
         {% block body %}{% endblock %}
       </div>
-      {% if not is_todo %}
+      {% if is_work_days %}
       {% include "_active_tasks_panel.html" %}
       {% endif %}
     </div>
   </div>
+  {% if timer_active and not is_timer %}
+  {% include "_timer_widget.html" %}
+  {% endif %}
+
+  <div class="modal" id="modal-app-settings" hidden>
+    <div class="modal__backdrop" data-close-modal></div>
+    <div class="modal__dialog" role="dialog" aria-modal="true" aria-labelledby="modal-app-settings-title">
+      <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">&times;</button>
+      <h2 class="modal__title" id="modal-app-settings-title">Настройки</h2>
+
+      <section class="settings-section">
+        <h3 class="settings-section__title">Тема</h3>
+        <div class="settings-theme" role="radiogroup" aria-label="Тема">
+          <button type="button" class="settings-theme__btn" data-theme-value="dark" aria-pressed="false">
+            <span class="settings-theme__swatch settings-theme__swatch--dark" aria-hidden="true"></span>
+            Тёмная
+          </button>
+          <button type="button" class="settings-theme__btn" data-theme-value="light" aria-pressed="false">
+            <span class="settings-theme__swatch settings-theme__swatch--light" aria-hidden="true"></span>
+            Светлая
+          </button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h3 class="settings-section__title">Стиль приложения</h3>
+        <div class="settings-styles" role="radiogroup" aria-label="Стиль">
+          <button type="button" class="settings-style" data-style-value="midnight" aria-pressed="false">
+            <span class="settings-style__preview" data-preview="midnight" aria-hidden="true"></span>
+            <span class="settings-style__name">Полночь</span>
+            <span class="settings-style__desc muted">Синий акцент</span>
+          </button>
+          <button type="button" class="settings-style" data-style-value="forest" aria-pressed="false">
+            <span class="settings-style__preview" data-preview="forest" aria-hidden="true"></span>
+            <span class="settings-style__name">Лес</span>
+            <span class="settings-style__desc muted">Зелёный акцент</span>
+          </button>
+          <button type="button" class="settings-style" data-style-value="sunset" aria-pressed="false">
+            <span class="settings-style__preview" data-preview="sunset" aria-hidden="true"></span>
+            <span class="settings-style__name">Закат</span>
+            <span class="settings-style__desc muted">Тёплый янтарный</span>
+          </button>
+          <button type="button" class="settings-style" data-style-value="graphite" aria-pressed="false">
+            <span class="settings-style__preview" data-preview="graphite" aria-hidden="true"></span>
+            <span class="settings-style__name">Графит</span>
+            <span class="settings-style__desc muted">Нейтральный серый</span>
+          </button>
+          <button type="button" class="settings-style" data-style-value="ocean" aria-pressed="false">
+            <span class="settings-style__preview" data-preview="ocean" aria-hidden="true"></span>
+            <span class="settings-style__name">Океан</span>
+            <span class="settings-style__desc muted">Бирюзовый акцент</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  </div>
+
   <script>
     (function () {
       const panel = document.getElementById('active-tasks-panel');
@@ -103,7 +201,106 @@
         });
       });
     })();
+
+    (function tickCountdowns() {
+      const roots = [
+        document.getElementById('timer-float'),
+        document.getElementById('timer-face'),
+      ].filter(Boolean);
+      if (!roots.length) return;
+
+      function parseIso(s) {
+        if (!s) return null;
+        return new Date(s);
+      }
+      function formatSeconds(sec) {
+        const s = Math.max(0, Math.floor(sec + 0.5));
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const r = s % 60;
+        if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0');
+        return m + ':' + String(r).padStart(2, '0');
+      }
+      function liveRemaining(el) {
+        let rem = parseFloat(el.dataset.remaining || '0');
+        const since = el.dataset.runningSince || '';
+        if (!since) return rem;
+        const t0 = parseIso(since);
+        if (!t0 || isNaN(t0.getTime())) return rem;
+        return rem - (Date.now() - t0.getTime()) / 1000;
+      }
+      function playAlarm(root) {
+        return new Promise((resolve) => {
+          const url = (root && root.dataset.soundUrl || '').trim();
+          if (!url) {
+            resolve();
+            return;
+          }
+          const seconds = parseInt(root.dataset.soundSeconds || '0', 10) || 0;
+          const volume = Math.max(0.01, Math.min(1, (parseInt(root.dataset.soundVolume || '80', 10) || 80) / 100));
+          const audio = new Audio(url);
+          audio.volume = volume;
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            try {
+              audio.pause();
+              audio.removeAttribute('src');
+              audio.load();
+            } catch (_) {}
+            resolve();
+          };
+          audio.addEventListener('ended', finish);
+          audio.addEventListener('error', finish);
+          if (seconds > 0) {
+            audio.loop = true;
+            setTimeout(finish, seconds * 1000);
+          }
+          audio.play().catch(finish);
+        });
+      }
+
+      let completing = false;
+      async function complete(url, root) {
+        if (completing || !url) return;
+        completing = true;
+        await playAlarm(root);
+        try {
+          await fetch(url, {
+            method: 'POST',
+            headers: { Accept: 'application/json' },
+          });
+        } catch (_) {}
+        window.location.reload();
+      }
+
+      function unlockAudio() {
+        const url = (roots[0] && roots[0].dataset.soundUrl || '').trim();
+        if (!url) return;
+        const audio = new Audio(url);
+        audio.volume = 0.001;
+        audio.play().then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+        }).catch(() => {});
+      }
+      document.addEventListener('pointerdown', unlockAudio, { once: true });
+      document.addEventListener('keydown', unlockAudio, { once: true });
+
+      function tick() {
+        for (const root of roots) {
+          const rem = liveRemaining(root);
+          const timeEl = root.querySelector('#timer-float-elapsed, #timer-face-time, .timer-float__time, .timer-face__time');
+          if (timeEl) timeEl.textContent = formatSeconds(Math.max(0, rem));
+          if (rem <= 0) complete(root.dataset.completeUrl, root);
+        }
+      }
+      tick();
+      setInterval(tick, 250);
+    })();
   </script>
+  <script src="{{ url_for('static', filename='settings.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
