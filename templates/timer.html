@@ -93,7 +93,7 @@
               {% if custom_sounds %}
               <optgroup label="Свои">
                 {% for s in custom_sounds %}
-                <option value="{{ s.key }}" data-url="{{ url_for('static', filename='timer_sounds/custom/' ~ s.filename) }}">{{ s.title }}</option>
+                <option value="{{ s.key }}" data-url="{{ custom_sound_url(s.filename) }}">{{ s.title }}</option>
                 {% endfor %}
               </optgroup>
               {% endif %}

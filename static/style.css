@@ -36,7 +36,7 @@
   --nav-active-text: #ffffff;
   --shadow-color: rgba(0, 0, 0, 0.45);
   --sidebar-collapsed-width: 4.4rem;
-  --sidebar-expanded-width: 11.5rem;
+  --sidebar-expanded-width: 10.25rem;
 }
 
 /* ---- Themes (surfaces) ---- */
@@ -298,6 +298,58 @@ body.has-active-panel {
 
 .app-sidebar.is-pinned {
   box-shadow: none;
+}
+
+.app-sidebar__brand {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 3.15rem;
+  margin: 0.4rem 0.45rem 0.1rem;
+  min-width: 0;
+  overflow: hidden;
+  text-decoration: none;
+}
+
+.app-sidebar:hover .app-sidebar__brand,
+.app-sidebar:focus-within .app-sidebar__brand,
+.app-sidebar.is-pinned .app-sidebar__brand {
+  justify-content: flex-start;
+  padding-left: 0.2rem;
+}
+
+.app-sidebar__brand-mark {
+  flex: 0 0 1.85rem;
+  width: 1.85rem;
+  height: 1.85rem;
+  display: block;
+  object-fit: contain;
+}
+
+.app-sidebar__brand-word {
+  height: 1.28rem;
+  width: auto;
+  max-width: 0;
+  margin-left: 0;
+  opacity: 0;
+  object-fit: contain;
+  object-position: left center;
+  pointer-events: none;
+  transition: max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1), margin-left 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease;
+}
+
+.app-sidebar:hover .app-sidebar__brand-word,
+.app-sidebar:focus-within .app-sidebar__brand-word,
+.app-sidebar.is-pinned .app-sidebar__brand-word {
+  max-width: 10.5rem;
+  margin-left: 0.45rem;
+  opacity: 1;
+}
+
+html[data-theme="light"] .app-sidebar__brand-mark,
+html[data-theme="light"] .app-sidebar__brand-word {
+  filter: invert(1) hue-rotate(180deg);
 }
 
 .app-sidebar__pin-row {

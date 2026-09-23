@@ -64,7 +64,27 @@
 > - **Приватность** - PIN-код на раздел, маскировка конфиденциальных полей, исключение их из выгрузок.
 
 
-## Установка
+## Программа для Windows
+
+Готовый файл `TimeKeeper.exe` публикуется отдельным релизом: https://github.com/codemed7-git/TimeKeeper/releases
+
+Скачайте `TimeKeeper.exe` и запустите его. Откроется браузер по адресу http://127.0.0.1:7777/. Чтобы остановить программу, закройте окно консоли.
+
+Рядом с exe появляются ваши данные: база `timekeeper.db` и папка `user_data` (свои звуки таймера и фото контактов). Они остаются на компьютере и не входят ни в репозиторий, ни в файл программы.
+
+Собрать exe из исходников:
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt pyinstaller
+venv\Scripts\pyinstaller.exe --noconfirm TimeKeeper.spec
+```
+
+Файл появится в `dist\TimeKeeper.exe`.
+
+
+## Установка из исходников
 
 ```bash
 git clone https://github.com/codemed7-git/TimeKeeper.git

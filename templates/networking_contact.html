@@ -4,7 +4,7 @@
 <header class="header">
   <div class="nw-contact-head">
     {% if c.photo_path %}
-    <img class="nw-avatar" src="{{ url_for('static', filename=c.photo_path) }}" alt="">
+    <img class="nw-avatar" src="{{ photo_url(c.photo_path) }}" alt="">
     {% endif %}
     <div>
       <h1 class="title">{{ c.display_name }}</h1>

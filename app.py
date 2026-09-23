@@ -7,16 +7,39 @@ import os
 import re
 import secrets
 import sqlite3
+import sys
+import threading
+import webbrowser
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from flask import Flask, Response, abort, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, Response, abort, g, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from werkzeug.utils import secure_filename
 
-DATABASE = Path(__file__).parent / "timekeeper.db"
-TIMER_SOUNDS_DIR = Path(__file__).parent / "static" / "timer_sounds"
-CUSTOM_SOUNDS_DIR = TIMER_SOUNDS_DIR / "custom"
+
+def is_frozen() -> bool:
+    return bool(getattr(sys, "frozen", False))
+
+
+def bundle_dir() -> Path:
+    """Read-only files shipped with the app (templates, static)."""
+    if is_frozen():
+        return Path(getattr(sys, "_MEIPASS"))
+    return Path(__file__).resolve().parent
+
+
+def data_dir() -> Path:
+    """Writable files: database and user uploads. Next to the exe when frozen."""
+    if is_frozen():
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+DATABASE = data_dir() / "timekeeper.db"
+TIMER_SOUNDS_DIR = bundle_dir() / "static" / "timer_sounds"
+CUSTOM_SOUNDS_DIR = data_dir() / "user_data" / "timer_sounds" if is_frozen() else TIMER_SOUNDS_DIR / "custom"
+NW_PHOTOS_DIR = data_dir() / "user_data" / "nw_photos" if is_frozen() else bundle_dir() / "static" / "nw_photos"
 MAX_CUSTOM_SOUND_BYTES = 5 * 1024 * 1024
 ALLOWED_SOUND_EXT = {".mp3", ".wav", ".ogg", ".oga", ".m4a", ".aac", ".flac", ".webm"}
 
@@ -1323,9 +1346,48 @@ def init_db():
     db.close()
 
 
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    template_folder=str(bundle_dir() / "templates"),
+    static_folder=str(bundle_dir() / "static"),
+)
 app.secret_key = os.environ.get("SECRET_KEY") or "timekeeper-local-dev-key"
 app.teardown_appcontext(close_db)
+
+
+@app.get("/user-files/<kind>/<path:name>")
+def user_file(kind: str, name: str):
+    roots = {
+        "timer_sounds": CUSTOM_SOUNDS_DIR,
+        "nw_photos": NW_PHOTOS_DIR,
+    }
+    root = roots.get(kind)
+    safe_name = Path(name).name
+    if root is None or not safe_name or safe_name != name or safe_name.startswith("."):
+        abort(404)
+    path = (root / safe_name).resolve()
+    try:
+        path.relative_to(root.resolve())
+    except ValueError:
+        abort(404)
+    if not path.is_file():
+        abort(404)
+    return send_from_directory(root, safe_name)
+
+
+@app.context_processor
+def inject_media_urls():
+    def custom_sound_url(filename: str) -> str:
+        if is_frozen():
+            return url_for("user_file", kind="timer_sounds", name=filename)
+        return url_for("static", filename=f"timer_sounds/custom/{filename}")
+
+    def photo_url(photo_path: str) -> str:
+        if is_frozen() and photo_path:
+            return url_for("user_file", kind="nw_photos", name=Path(photo_path).name)
+        return url_for("static", filename=photo_path)
+
+    return {"custom_sound_url": custom_sound_url, "photo_url": photo_url}
 
 
 def redirect_back(default_endpoint: str = "work_days_home", **kwargs):
@@ -1458,7 +1520,11 @@ def timer_sound_url(sound_key: str) -> str:
     path = timer_sound_file(sound_key)
     if not path:
         return ""
-    rel = path.relative_to(Path(__file__).parent / "static").as_posix()
+    static_root = (bundle_dir() / "static").resolve()
+    try:
+        rel = path.resolve().relative_to(static_root).as_posix()
+    except ValueError:
+        return url_for("user_file", kind="timer_sounds", name=path.name)
     return url_for("static", filename=rel)
 
 
@@ -4229,7 +4295,6 @@ def tracker_reset_today(item_id: int):
     return jsonify(_tracker_hourglass_response(conn, item_id, []))
 
 
-NW_PHOTOS_DIR = Path(__file__).parent / "static" / "nw_photos"
 NW_PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 NW_PHOTO_MAX = 2 * 1024 * 1024
 
@@ -8345,6 +8410,12 @@ def main():
     debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
     host = os.environ.get("HOST", "127.0.0.1")
     port = int(os.environ.get("PORT", "7777"))
+    if is_frozen():
+        debug = False
+        url = f"http://127.0.0.1:{port}/"
+        print(f"TimeKeeper: {url}")
+        print("Закройте это окно, чтобы остановить программу.")
+        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     app.run(debug=debug, host=host, port=port)
 
 
