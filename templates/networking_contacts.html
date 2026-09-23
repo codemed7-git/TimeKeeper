@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Контакты — Нетворкинг{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Контакты</h1>
+    <p class="subtitle muted">Картотека и досье</p>
+  </div>
+  <button type="button" class="btn btn--primary" data-open-modal="modal-nw-contact">Добавить контакт</button>
+</header>
+
+<form method="get" class="card nw-filters" action="{{ url_for('networking_contacts') }}">
+  <input type="search" name="q" class="input" value="{{ filters.q }}" placeholder="Поиск по имени, компании, тегам, заметкам">
+  <select name="circle" class="input">
+    <option value="">Все круги</option>
+    {% for k, v in nw_circles.items() %}
+    <option value="{{ k }}"{% if filters.circle == k %} selected{% endif %}>{{ v }}</option>
+    {% endfor %}
+  </select>
+  <select name="list" class="input">
+    <option value="">Все списки</option>
+    {% for k, v in nw_lists.items() %}
+    <option value="{{ k }}"{% if filters.list == k %} selected{% endif %}>{{ v }}</option>
+    {% endfor %}
+  </select>
+  <select name="role" class="input">
+    <option value="">Все роли</option>
+    {% for k, v in nw_roles.items() %}
+    <option value="{{ k }}"{% if filters.role == k %} selected{% endif %}>{{ v }}</option>
+    {% endfor %}
+  </select>
+  <select name="stage" class="input">
+    <option value="">Все этапы</option>
+    {% for k, v in nw_stages.items() %}
+    <option value="{{ k }}"{% if filters.stage == k %} selected{% endif %}>{{ v }}</option>
+    {% endfor %}
+  </select>
+  <select name="group" class="input">
+    <option value="">Группа интересов</option>
+    {% for g in groups %}
+    <option value="{{ g.id }}"{% if filters.group == g.id %} selected{% endif %}>{{ g.name }}</option>
+    {% endfor %}
+  </select>
+  <select name="sort" class="input">
+    <option value="name"{% if filters.sort == 'name' %} selected{% endif %}>По имени</option>
+    <option value="due"{% if filters.sort == 'due' %} selected{% endif %}>Пора связаться</option>
+    <option value="touch"{% if filters.sort == 'touch' %} selected{% endif %}>Давность касания</option>
+    <option value="importance"{% if filters.sort == 'importance' %} selected{% endif %}>Важность</option>
+  </select>
+  <select name="view" class="input">
+    <option value="table"{% if filters.view == 'table' %} selected{% endif %}>Таблица</option>
+    <option value="cards"{% if filters.view == 'cards' %} selected{% endif %}>Карточки</option>
+  </select>
+  <label class="nw-check"><input type="checkbox" name="confidential" value="1"{% if filters.confidential == '1' %} checked{% endif %}> Конфиденциальные</label>
+  <label class="nw-check"><input type="checkbox" name="archive" value="1"{% if filters.archive == '1' %} checked{% endif %}> Архив</label>
+  <button class="btn btn--primary" type="submit">Фильтр</button>
+</form>
+
+<form method="post" action="{{ url_for('networking_contacts_bulk') }}" id="nw-bulk-form">
+  <div class="card nw-bulk">
+    <span class="muted">Массово:</span>
+    <select name="action" class="input input--compact">
+      <option value="circle">Сменить круг</option>
+      <option value="list">Сменить список</option>
+      <option value="group">В группу интересов</option>
+      <option value="archive">В архив</option>
+    </select>
+    <select name="circle" class="input input--compact">
+      {% for k, v in nw_circles.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+    </select>
+    <select name="priority_list" class="input input--compact">
+      {% for k, v in nw_lists.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+    </select>
+    <select name="group_id" class="input input--compact">
+      <option value="">Группа</option>
+      {% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+    </select>
+    <button class="btn btn--sm btn--primary" type="submit">Применить</button>
+  </div>
+
+  {% if filters.view == 'cards' %}
+  <div class="nw-card-grid">
+    {% for c in contacts %}
+    <article class="card nw-person-card">
+      <label class="nw-check"><input type="checkbox" name="ids" value="{{ c.id }}"></label>
+      <h2 class="card-title"><a class="inline-link" href="{{ url_for('networking_contact', contact_id=c.id) }}">{{ c.list_name }}</a></h2>
+      <p class="muted">{{ c.circle_label }} · {{ c.list_label }} · {{ c.stage_label }}</p>
+      <p class="muted">Опоры {{ c.legs }}/3 · касание {{ c.last_contact_at or '—' }}</p>
+      <div class="nw-badges">
+        {% for r in c.roles_list %}<span class="nw-role nw-role--{{ r }}">{{ nw_roles[r] }}</span>{% endfor %}
+      </div>
+    </article>
+    {% else %}
+    <p class="muted">Контактов нет.</p>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card nw-table-wrap">
+    <table class="nw-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Имя</th>
+          <th>Круг</th>
+          <th>Список</th>
+          <th>Этап</th>
+          <th>Роли</th>
+          <th>Опоры</th>
+          <th>Касание</th>
+          <th>Пора связаться</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in contacts %}
+        <tr>
+          <td><input type="checkbox" name="ids" value="{{ c.id }}"></td>
+          <td><a class="inline-link" href="{{ url_for('networking_contact', contact_id=c.id) }}">{{ c.list_name }}</a></td>
+          <td>{{ c.circle_label }}</td>
+          <td>{{ c.list_label }}</td>
+          <td>{{ c.stage_label }}</td>
+          <td>{% for r in c.roles_list %}<span class="nw-role nw-role--{{ r }}">{{ nw_roles[r] }}</span>{% endfor %}</td>
+          <td>{{ c.legs }}/3</td>
+          <td>{{ c.last_contact_at or '—' }}</td>
+          <td class="{% if c.overdue %}nw-overdue{% endif %}">{{ c.next_contact_due or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="muted">Контактов нет.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</form>
+{% include "_networking_new_contact.html" %}
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+{% endblock %}

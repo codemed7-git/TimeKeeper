@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Карта сети — Нетворкинг{% endblock %}
+{% block body %}
+<div class="nw-map">
+  <header class="header nw-map__header">
+    <div>
+      <h1 class="title">Карта</h1>
+      <p class="subtitle muted">Круги, сектора и связи</p>
+    </div>
+    <div class="nw-map__toolbar">
+      <label class="nw-check"><input type="radio" name="map-mode" value="radial"{% if map_mode=='radial' %} checked{% endif %}> Круги</label>
+      <label class="nw-check"><input type="radio" name="map-mode" value="free"{% if map_mode=='free' %} checked{% endif %}> Свободный</label>
+      <select id="nw-filter-circle" class="input input--compact">
+        <option value="">Все круги</option>
+        {% for k,v in nw_circles.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+      </select>
+      <select id="nw-filter-role" class="input input--compact">
+        <option value="">Все роли</option>
+        {% for k,v in nw_roles.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}
+      </select>
+      <select id="nw-filter-group" class="input input--compact">
+        <option value="">Группа</option>
+        {% for g in groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}
+      </select>
+      <input id="nw-filter-tag" class="input input--compact" placeholder="Тег">
+      <label class="nw-check"><input type="checkbox" id="nw-filter-problem"> Проблемные</label>
+      <label class="nw-check"><input type="checkbox" id="nw-filter-overdue"> Просроченные</label>
+      <label class="nw-check"><input type="checkbox" id="nw-show-edges" checked> Рёбра между людьми</label>
+      <form method="post" action="{{ url_for('networking_map_reset') }}" class="inline-form">
+        <button class="btn btn--sm btn--ghost" type="submit">Сбросить позиции</button>
+      </form>
+      <button type="button" class="btn btn--sm btn--primary" id="nw-export-png">Экспорт PNG</button>
+      <button type="button" class="btn btn--sm btn--ghost" data-open-modal="modal-nw-contact">Контакт</button>
+    </div>
+  </header>
+  <div class="nw-map__stage">
+    <canvas id="nw-map-canvas" class="nw-map__canvas"></canvas>
+    <aside class="nw-map__side" id="nw-map-side">
+      <p class="muted">Клик по узлу — мини-досье. Двойной клик по фону — новый контакт. Перетаскивание сохраняет позицию.</p>
+    </aside>
+  </div>
+  <div class="nw-map__legend">
+    <span>Круги: поддержка → продуктивность → развитие</span>
+    {% for g in groups %}<span><i class="nw-dot" style="background:{{ g.color }}"></i> {{ g.name }}</span>{% endfor %}
+    <span>пунктир — знакомство / стабилизируются · сплошная — стабильные / доверительные · красный — проблема</span>
+  </div>
+  <div class="nw-map__metrics" id="nw-map-metrics">
+    {% for k, label in nw_circles.items() %}
+    <span>{{ label }}: {{ stats.counts[k] }} / {{ stats.targets[k] }}</span>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="modal" id="modal-nw-edge" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog">
+    <button type="button" class="modal__close" data-close-modal>&times;</button>
+    <h2 class="modal__title">Связь между людьми</h2>
+    <form method="post" action="{{ url_for('networking_edge_save') }}" class="stack-form">
+      <label class="field">Кто <select name="a_id" class="input">{% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}</select></label>
+      <label class="field">С кем <select name="b_id" class="input">{% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}</select></label>
+      <label class="field">Сила
+        <select name="strength" class="input">
+          <option value="intense">Интенсивная</option>
+          <option value="normal" selected>Обычная</option>
+          <option value="sporadic">Спорадическая</option>
+        </select>
+      </label>
+      <label class="field">Качество
+        <select name="quality" class="input">
+          <option value="positive">Позитивная</option>
+          <option value="neutral" selected>Нейтральная</option>
+          <option value="problem">Проблемная</option>
+        </select>
+      </label>
+      <label class="field">Направление
+        <select name="direction" class="input">
+          <option value="mutual">Взаимная</option>
+          <option value="a_to_b">От первого ко второму</option>
+          <option value="b_to_a">От второго к первому</option>
+        </select>
+      </label>
+      <input class="input" name="label" placeholder="Подпись">
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-close-modal>Отмена</button>
+        <button class="btn btn--primary" type="submit">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% include "_networking_new_contact.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+  window.NW_MAP = {
+    dataUrl: {{ url_for('networking_map_data')|tojson }},
+    posUrl: {{ url_for('networking_map_position')|tojson }},
+    modeUrl: {{ url_for('networking_map_mode')|tojson }},
+    contactUrl: {{ url_for('networking_contact', contact_id=0)|tojson }},
+    touchUrl: {{ url_for('networking_interaction_add', contact_id=0)|tojson }},
+    circles: {{ nw_circles|tojson }},
+    roles: {{ nw_roles|tojson }},
+    stages: {{ nw_stages|tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+<script src="{{ url_for('static', filename='networking_map.js') }}"></script>
+{% endblock %}

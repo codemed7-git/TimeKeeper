@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Нетворкинг — обзор{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Обзор</h1>
+    <p class="subtitle muted">Ритм связей, даты и состояние сети</p>
+  </div>
+  <div class="nw-header-actions">
+    <button type="button" class="btn btn--primary" data-open-modal="modal-nw-contact">Добавить контакт</button>
+    <a class="btn btn--ghost" href="{{ url_for('networking_import') }}">Импорт</a>
+    <a class="btn btn--ghost" href="{{ url_for('networking_review') }}">Ежемесячный разбор</a>
+    <a class="btn btn--ghost" href="{{ url_for('networking_map') }}">Открыть карту</a>
+  </div>
+</header>
+
+<section class="card nw-widget">
+  <h2 class="card-title">Пора связаться</h2>
+  {% macro due_list(items, empty) %}
+    {% if items %}
+    <ul class="nw-list">
+      {% for c in items %}
+      <li class="nw-list__row">
+        <div>
+          <a class="inline-link" href="{{ url_for('networking_contact', contact_id=c.id) }}">{{ c.display_name }}</a>
+          <span class="muted"> · {{ c.circle_label }}</span>
+          {% if c.days_delta > 0 %}
+          <span class="nw-pill nw-pill--warn">просрочено на {{ c.days_delta }} дн.</span>
+          {% elif c.days_delta == 0 %}
+          <span class="nw-pill">сегодня</span>
+          {% else %}
+          <span class="nw-pill">через {{ -c.days_delta }} дн.</span>
+          {% endif %}
+        </div>
+        <div class="nw-row-actions">
+          <form method="post" action="{{ url_for('networking_interaction_add', contact_id=c.id) }}" class="inline-form">
+            <input type="hidden" name="channel" value="message">
+            <input type="hidden" name="summary" value="Касание с обзора">
+            <button class="btn btn--sm btn--primary" type="submit">Касание</button>
+          </form>
+          <a class="btn btn--sm btn--ghost" href="{{ url_for('networking_meetings') }}?contact_id={{ c.id }}">Встреча</a>
+          <form method="post" action="{{ url_for('networking_contact_snooze', contact_id=c.id) }}" class="inline-form">
+            <input type="hidden" name="days" value="7">
+            <button class="btn btn--sm btn--ghost" type="submit">Отложить на 7 дней</button>
+          </form>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">{{ empty }}</p>
+    {% endif %}
+  {% endmacro %}
+  <h3 class="nw-subh">Просрочено</h3>
+  {{ due_list(overdue, "Нет просроченных касаний.") }}
+  <h3 class="nw-subh">Сегодня</h3>
+  {{ due_list(today_due, "На сегодня никого.") }}
+  <h3 class="nw-subh">Ближайшие 7 дней</h3>
+  {{ due_list(week_due, "Пусто.") }}
+</section>
+
+<section class="card nw-widget">
+  <h2 class="card-title">Даты и поздравления</h2>
+  {% if dates %}
+  <ul class="nw-list">
+    {% for d in dates %}
+    <li class="nw-list__row">
+      <div>
+        <strong>{{ d.title or nw_date_kinds.get(d.kind, d.kind) }}</strong>
+        <span class="muted"> · {{ d.person }} · {{ d.occ }}</span>
+        {% if d.days_until == 0 %}
+        <span class="nw-pill nw-pill--warn">сегодня</span>
+        {% else %}
+        <span class="nw-pill">через {{ d.days_until }} дн.</span>
+        {% endif %}
+        {% if d.passed_leads %}
+        <span class="muted">за {{ d.passed_leads[0] }} дн.</span>
+        {% endif %}
+        {% if d.status == 'done' %}<span class="nw-pill nw-pill--ok">поздравил</span>{% endif %}
+        {% if d.status == 'skip' %}<span class="muted">пропущено</span>{% endif %}
+        {% if d.greeting_note %}
+        <p class="muted nw-note">{{ d.greeting_note }}</p>
+        {% endif %}
+      </div>
+      <div class="nw-row-actions">
+        {% if d.status != 'done' %}
+        <form method="post" action="{{ url_for('networking_date_greet', date_id=d.id) }}" class="inline-form">
+          <input type="hidden" name="occ_year" value="{{ d.occ_year }}">
+          <input type="hidden" name="status" value="done">
+          <button class="btn btn--sm btn--primary" type="submit">Поздравил</button>
+        </form>
+        <form method="post" action="{{ url_for('networking_date_greet', date_id=d.id) }}" class="inline-form">
+          <input type="hidden" name="occ_year" value="{{ d.occ_year }}">
+          <input type="hidden" name="status" value="snoozed">
+          <input type="hidden" name="days" value="3">
+          <button class="btn btn--sm btn--ghost" type="submit">Отложить</button>
+        </form>
+        <form method="post" action="{{ url_for('networking_date_greet', date_id=d.id) }}" class="inline-form">
+          <input type="hidden" name="occ_year" value="{{ d.occ_year }}">
+          <input type="hidden" name="status" value="skip">
+          <button class="btn btn--sm btn--ghost" type="submit">Пропустить</button>
+        </form>
+        {% endif %}
+        {% if d.contact_id %}
+        <a class="btn btn--sm btn--ghost" href="{{ url_for('networking_contact', contact_id=d.contact_id) }}">Контакт</a>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Ближайших дат нет. Добавьте дни рождения в карточках или общие праздники в настройках.</p>
+  {% endif %}
+</section>
+
+<section class="card nw-widget">
+  <h2 class="card-title">Задачи нетворкинга</h2>
+  {% if actions %}
+  <ul class="nw-list">
+    {% for a in actions %}
+    <li class="nw-list__row">
+      <div>
+        {{ a.title }}
+        {% if a.display_name %}<span class="muted"> · {{ a.display_name }}</span>{% endif %}
+        {% if a.due_date %}<span class="muted"> · {{ a.due_date }}</span>{% endif %}
+        {% if a.overdue %}<span class="nw-pill nw-pill--warn">просрочено</span>{% elif a.soon %}<span class="nw-pill">скоро</span>{% endif %}
+      </div>
+      <form method="post" action="{{ url_for('networking_action_update', aid=a.id) }}" class="inline-form">
+        <input type="hidden" name="status" value="done">
+        <button class="btn btn--sm btn--primary" type="submit">Выполнено</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Открытых задач нет.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('networking_action_create') }}" class="row-form nw-inline-add">
+    <input type="text" name="title" class="input" placeholder="Новая задача" required>
+    <input type="date" name="due_date" class="input">
+    <button class="btn btn--primary" type="submit">Добавить</button>
+  </form>
+</section>
+
+<section class="card nw-widget">
+  <h2 class="card-title">Запланированные встречи</h2>
+  {% if meetings %}
+  <ul class="nw-list">
+    {% for m in meetings %}
+    <li class="nw-list__row">
+      <div>
+        <a class="inline-link" href="{{ url_for('networking_meeting', meeting_id=m.id) }}">{{ m.title }}</a>
+        <span class="muted"> · {{ m.display_name }}{% if m.planned_at %} · {{ m.planned_at }}{% endif %}</span>
+      </div>
+      <a class="btn btn--sm btn--ghost" href="{{ url_for('networking_meeting', meeting_id=m.id) }}">Подготовка</a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Запланированных встреч нет.</p>
+  {% endif %}
+</section>
+
+<section class="card nw-widget">
+  <h2 class="card-title">Состояние сети</h2>
+  <div class="nw-stats">
+    {% for k, label in nw_circles.items() %}
+    <div class="nw-stat">
+      <span class="muted">{{ label }}</span>
+      <strong>{{ stats.counts[k] }} / {{ stats.targets[k] }}</strong>
+    </div>
+    {% endfor %}
+    <div class="nw-stat">
+      <span class="muted">Обновление за год</span>
+      <strong>+{{ stats.acquired }} / −{{ stats.lost }} · {{ stats.churn }}%</strong>
+      <span class="muted">ориентир {{ stats.churn_target }}%</span>
+    </div>
+    <div class="nw-stat">
+      <span class="muted">Ключевых (80/20)</span>
+      <strong>{{ stats.key_n }} · {{ stats.key_share }}% людей</strong>
+      <span class="muted">{{ stats.key_touch_share }}% касаний за 90 дн.</span>
+    </div>
+  </div>
+</section>
+
+{% include "_networking_new_contact.html" %}
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+{% endblock %}

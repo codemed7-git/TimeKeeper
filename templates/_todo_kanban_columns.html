@@ -1,0 +1,90 @@
+{% set allow_split = allow_split if allow_split is defined else True %}
+{% for column in columns %}
+<section
+  class="kanban-column kanban-column--{{ column.color_key }}{% if column.collapsed %} is-collapsed{% endif %}"
+  data-column-id="{{ column.id }}"
+  data-column-title="{{ column.title|e }}"
+>
+  <div class="kanban-column__header">
+    <div class="kanban-column__header-top">
+      <form
+        method="post"
+        action="{{ url_for('todo_collapse_column', column_id=column.id) }}"
+        class="kanban-collapse-form js-collapse-column"
+      >
+        <input type="hidden" name="collapsed" value="{{ 0 if column.collapsed else 1 }}">
+        <button
+          type="submit"
+          class="kanban-icon-btn kanban-collapse-btn"
+          title="{{ 'Развернуть' if column.collapsed else 'Свернуть' }}"
+          aria-label="{{ 'Развернуть колонку' if column.collapsed else 'Свернуть колонку' }}"
+          aria-expanded="{{ 'false' if column.collapsed else 'true' }}"
+        >{{ '›' if column.collapsed else '‹' }}</button>
+      </form>
+      <div class="kanban-column__meta">
+        <span class="kanban-column__count">{{ column.cards|length }}</span>
+        <button
+          type="button"
+          class="kanban-icon-btn kanban-column__add-card"
+          title="Добавить задачу"
+          data-open-modal="modal-new-card"
+          data-column-id="{{ column.id }}"
+        >+</button>
+        <button
+          type="button"
+          class="kanban-icon-btn kanban-icon-btn--header js-edit-column"
+          title="Переименовать колонку"
+        >✎</button>
+        <form
+          method="post"
+          action="{{ url_for('todo_delete_column', column_id=column.id) }}"
+          class="kanban-column__delete"
+          onsubmit="return confirm('Удалить колонку «{{ column.title }}» и все её задачи?');"
+        >
+          <button type="submit" class="kanban-icon-btn kanban-icon-btn--header" title="Удалить колонку">×</button>
+        </form>
+      </div>
+    </div>
+    <button
+      type="button"
+      class="kanban-column__title js-edit-column"
+      title="Переименовать колонку"
+    >{{ column.title }}</button>
+  </div>
+  <div class="kanban-column__cards" data-drop-zone>
+    {% for card in column.cards %}
+    <article
+      class="kanban-card"
+      draggable="true"
+      data-card-id="{{ card.id }}"
+      data-title="{{ card.title|e }}"
+      data-note="{{ (card.note or '')|e }}"
+    >
+      <p class="kanban-card__title">{{ card.title }}</p>
+      {% if card.note %}
+      <p class="kanban-card__note">{{ card.note }}</p>
+      {% endif %}
+      <div class="kanban-card__actions">
+        <button type="button" class="kanban-icon-btn kanban-icon-btn--sm js-edit-card" title="Редактировать">✎</button>
+        <form method="post" action="{{ url_for('todo_delete_card', card_id=card.id) }}" class="js-delete-card-form" onsubmit="return confirm('Удалить задачу?');">
+          <button type="submit" class="kanban-icon-btn kanban-icon-btn--sm" title="Удалить">×</button>
+        </form>
+      </div>
+      {% if allow_split %}
+      <button
+        type="button"
+        class="kanban-card__subtasks js-open-subboard{% if card.has_subboard %} has-subtasks{% endif %}"
+        data-card-id="{{ card.id }}"
+        data-card-title="{{ card.title|e }}"
+        title="{{ 'Открыть подзадачи' if card.has_subboard else 'Разбить на подзадачи' }}"
+      >
+        <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></svg>
+        {% if card.has_subboard %}{{ card.subtask_done }}/{{ card.subtask_total }}{% else %}Разбить{% endif %}
+      </button>
+      {% endif %}
+    </article>
+    {% endfor %}
+    <div class="kanban-empty"{% if column.cards %} hidden{% endif %}>Перетащите задачу сюда</div>
+  </div>
+</section>
+{% endfor %}

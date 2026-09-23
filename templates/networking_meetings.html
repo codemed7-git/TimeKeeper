@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Встречи — Нетворкинг{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Встречи</h1>
+    <p class="subtitle muted">Подготовка и разбор</p>
+  </div>
+  <button type="button" class="btn btn--primary" data-open-modal="modal-nw-meeting">Новая встреча</button>
+</header>
+
+<form method="get" class="card nw-filters">
+  <select name="status" class="input">
+    <option value="">Все статусы</option>
+    <option value="planned"{% if filters.status=='planned' %} selected{% endif %}>Запланирована</option>
+    <option value="done"{% if filters.status=='done' %} selected{% endif %}>Проведена</option>
+    <option value="canceled"{% if filters.status=='canceled' %} selected{% endif %}>Отменена</option>
+  </select>
+  <select name="contact_id" class="input">
+    <option value="">Все контакты</option>
+    {% for c in contacts %}<option value="{{ c.id }}"{% if filters.contact_id==c.id %} selected{% endif %}>{{ c.display_name }}</option>{% endfor %}
+  </select>
+  <select name="period" class="input">
+    <option value="">Любой период</option>
+    <option value="week"{% if filters.period=='week' %} selected{% endif %}>Неделя</option>
+    <option value="month"{% if filters.period=='month' %} selected{% endif %}>Месяц</option>
+  </select>
+  <button class="btn btn--primary" type="submit">Фильтр</button>
+</form>
+
+<div class="card">
+  <ul class="nw-list">
+    {% for m in meetings %}
+    <li class="nw-list__row">
+      <div>
+        <a class="inline-link" href="{{ url_for('networking_meeting', meeting_id=m.id) }}">{{ m.title }}</a>
+        <span class="muted"> · {{ m.display_name }} · {{ m.status }}{% if m.planned_at %} · {{ m.planned_at }}{% endif %}</span>
+      </div>
+    </li>
+    {% else %}
+    <li class="muted">Встреч нет.</li>
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="modal" id="modal-nw-meeting" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog">
+    <button type="button" class="modal__close" data-close-modal>&times;</button>
+    <h2 class="modal__title">Новая встреча</h2>
+    <form method="post" action="{{ url_for('networking_meeting_create') }}" class="stack-form">
+      <label class="field">Контакт
+        <select name="contact_id" class="input" required>
+          <option value="">Выберите</option>
+          {% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field">Название <input class="input" name="title"></label>
+      <label class="field">Когда <input class="input" type="datetime-local" name="planned_at"></label>
+      <label class="field">Место <input class="input" name="place"></label>
+      <label class="field">Зацепка
+        <select name="hook_id" class="input">
+          <option value="">—</option>
+          {% for h in hooks %}<option value="{{ h.id }}">{{ h.title }}</option>{% endfor %}
+        </select>
+      </label>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-close-modal>Отмена</button>
+        <button class="btn btn--primary" type="submit">Создать</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+{% endblock %}

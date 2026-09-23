@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Помощники — Нетворкинг{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Помощники</h1>
+    <p class="subtitle muted">Чек-листы и мастера</p>
+  </div>
+</header>
+<nav class="nw-toc">
+  <a href="{{ url_for('networking_assistants', tab='ois') }}">ОИС</a>
+  <a href="{{ url_for('networking_assistants', tab='first') }}">Первый контакт</a>
+  <a href="{{ url_for('networking_assistants', tab='diag') }}">Диагностика</a>
+  <a href="{{ url_for('networking_assistants', tab='party') }}">План приёма</a>
+  <a href="{{ url_for('networking_review') }}">Ежемесячный разбор</a>
+  <a href="{{ url_for('networking_assistants', tab='guide') }}">Справочник</a>
+</nav>
+
+{% if tab == 'ois' %}
+<section class="card">
+  <h2 class="card-title">Сортировка нового контакта (ОИС)</h2>
+  <p class="muted">Три шкалы 0–3: опасен для вас, интересен, сложен. Решение: работать, заморозить (периферия + задача вернуться) или отпустить (архив).</p>
+  <form method="post" id="form-ois" class="stack-form">
+    <label class="field">Контакт
+      <select name="contact_id" class="input" required>
+        <option value="">Выберите</option>
+        {% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field">Опасен? <input type="range" min="0" max="3" name="triage_danger" value="0"></label>
+    <label class="field">Интересен? <input type="range" min="0" max="3" name="triage_interest" value="0"></label>
+    <label class="field">Сложен? <input type="range" min="0" max="3" name="triage_complexity" value="0"></label>
+    <label class="field">Решение
+      <select name="triage_decision" class="input">
+        <option value="work">Работать</option>
+        <option value="freeze">Заморозить</option>
+        <option value="drop">Отпустить</option>
+      </select>
+    </label>
+    <button class="btn btn--primary" type="submit">Зафиксировать</button>
+  </form>
+</section>
+{% elif tab == 'first' %}
+<section class="card">
+  <h2 class="card-title">Первый контакт</h2>
+  <h3 class="nw-subh">Поведенческая гигиена</h3>
+  <ul>
+    <li>Опрятный вид и руки, свежее дыхание</li>
+    <li>Спокойный голос и темп, без суеты</li>
+    <li>Расслабленная поза и улыбка</li>
+    <li>Выглядеть узнаваемо для круга собеседника, без вычурности</li>
+    <li>Не перегружать разговор собой</li>
+  </ul>
+  <h3 class="nw-subh">Ситуативное прикрытие</h3>
+  <p class="muted">Коротко и правдиво: кто вы, что здесь делаете, почему обращаетесь именно к этому человеку.</p>
+  <form method="post" action="{{ url_for('networking_first_contact') }}" class="stack-form">
+    <label class="field">Контакт (необязательно)
+      <select name="contact_id" class="input">
+        <option value="">Сохранить черновик</option>
+        {% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}
+      </select>
+    </label>
+    <textarea class="input" name="cover" rows="5" placeholder="Кто я / почему здесь / почему к нему">{{ first_draft }}</textarea>
+    <p class="muted">После сохранения в карточку создаётся задача «написать завтра утром» (правило 24–48 часов).</p>
+    <button class="btn btn--primary" type="submit">Сохранить</button>
+  </form>
+</section>
+{% elif tab == 'diag' %}
+<section class="card">
+  <h2 class="card-title">Диагностика проблем в отношениях</h2>
+  <p class="muted">Тревожные признаки — частые переносы; инициатива только на вас; нет роста открытости; внезапный интерес без причины. Проверка — небольшая просьба.</p>
+  <form method="post" action="{{ url_for('networking_diagnosis_create') }}" class="stack-form">
+    <label class="field">Контакт
+      <select name="contact_id" class="input" required>
+        <option value="">Выберите</option>
+        {% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="nw-check"><input type="checkbox" name="flag_reschedules" value="1"> Частые переносы / игнор</label>
+    <label class="nw-check"><input type="checkbox" name="flag_no_initiative" value="1"> Нет инициативы и взаимности</label>
+    <label class="nw-check"><input type="checkbox" name="flag_no_openness" value="1"> Не растёт открытость</label>
+    <label class="nw-check"><input type="checkbox" name="flag_sudden_interest" value="1"> Внезапный интерес без причины</label>
+    <label class="field">Вердикт
+      <select name="verdict" class="input">{% for k,v in nw_verdicts.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+    </label>
+    <textarea class="input" name="note" rows="2" placeholder="Заметка"></textarea>
+    <button class="btn btn--primary" type="submit">Записать</button>
+  </form>
+  <ul class="nw-list">
+    {% for d in diagnoses %}
+    <li>{{ d.taken_at }} · {{ d.display_name }} · {{ nw_verdicts.get(d.verdict, d.verdict) }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% elif tab == 'party' %}
+<section class="card">
+  <h2 class="card-title">План приёма</h2>
+  <form method="post" action="{{ url_for('networking_gathering_create') }}" class="row-form">
+    <input class="input" name="title" placeholder="Название" required>
+    <input class="input" type="datetime-local" name="planned_at">
+    <input class="input" name="place" placeholder="Место">
+    <button class="btn btn--primary">Создать</button>
+  </form>
+</section>
+{% for g in gatherings %}
+<section class="card">
+  <h2 class="card-title">{{ g.title }}</h2>
+  <p class="muted">{{ g.planned_at or '' }} · {{ g.place }}</p>
+  {% if g.warn_new %}<p class="nw-error">Доля новых лиц больше 25% ({{ g.new_pct }}%).</p>{% endif %}
+  {% if g.warn_star %}<p class="nw-error">Нет «звёздного» гостя.</p>{% endif %}
+  <p class="muted">Гостей: {{ g.guests|length }} · новых {{ g.new_pct }}% · звёздных {{ g.star_n }}</p>
+  <ul class="nw-list">
+    {% for gs in g.guests %}
+    <li class="nw-list__row">
+      <span>{{ gs.display_name or gs.external_name }} {% if gs.is_new_face %}· новое лицо{% endif %} {% if gs.is_star_guest %}· звезда{% endif %} · {{ gs.rsvp }}</span>
+      <form method="post" action="{{ url_for('networking_gathering_guest_delete', gsid=gs.id) }}"><button class="btn btn--xs btn--ghost">×</button></form>
+    </li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="{{ url_for('networking_gathering_guest_add', gid=g.id) }}" class="row-form">
+    <select name="contact_id" class="input"><option value="">Контакт</option>{% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}</select>
+    <input class="input" name="external_name" placeholder="Или имя">
+    <label class="nw-check"><input type="checkbox" name="is_new_face" value="1"> новое лицо</label>
+    <label class="nw-check"><input type="checkbox" name="is_star_guest" value="1"> звёздный гость</label>
+    <button class="btn btn--sm btn--primary">Гость</button>
+  </form>
+</section>
+{% endfor %}
+{% else %}
+<article class="card nw-guide" id="guide">
+  <h2 class="card-title">Справочник методик</h2>
+  <h3 id="roles">Роли в сети</h3>
+  <p>Находите «коннекторов» — тех, кто легко знакомит с людьми, — и сближайтесь с ними: через них открывается доступ к чужим кругам. Находите «конденсаторов» — тех, у кого накоплены знания, опыт и репутация. Договаривайтесь с «привратниками» и «мостами»: от них зависит, откроется дверь или закроется. «Проводник» ведёт внутрь конкретной группы.</p>
+  <h3 id="legs">Опоры отношений</h3>
+  <p>Устойчивая связь стоит минимум на трёх опорах: общий интерес, эмоциональное сопереживание, общий круг общения. Чем меньше опор, тем выше риск, что связь распадётся.</p>
+  <h3 id="open">Модели раскрытия</h3>
+  <p>Персик быстро идёт на лёгкое знакомство, но до доверия далеко. Гранат сходится медленно, зато потом открывается почти полностью. Яблоко — середина; часть тем так и останется закрытой.</p>
+  <h3 id="talk">Типажи</h3>
+  <p>Великий коммуникатор сам рад заговорить. Центру внимания нужен искренний комплимент. Контролёру важны порядок и критерии. Замкнутому — веская причина и медленный темп.</p>
+  <h3 id="ask">Просьба о помощи</h3>
+  <p>Просите о небольшом, благодарите заметно щедрее. Так растёт доверие, и вы не рискуете связью.</p>
+  <h3 id="org">Стили решений</h3>
+  <p>Царь: вся стратегия — дойти до одного человека. Комитет: не нажить противников, быть нейтральным. Бюрократия: знать процесс и людей на каждом шаге.</p>
+  <h3 id="lifts">Социальные лифты</h3>
+  <p>Образование и новые люди в нём; статусные сообщества; публичность и полезный контент; участие в решении заметных общих проблем; готовность менять места.</p>
+  <h3 id="ethics">Этика</h3>
+  <p>Уважайте чужое время и границы; не давите; не навязывайте отношения; умейте отпускать и не мстить.</p>
+</article>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  window.NW_OIS = {{ url_for('networking_contact_triage', contact_id=0)|tojson }};
+</script>
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+{% endblock %}

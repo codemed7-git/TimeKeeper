@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Цели — Нетворкинг{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Круг целей</h1>
+    <p class="subtitle muted">Что · Кто и где · Как. Типовые секторы: Финансы, Здоровье, Семья, Интересы и рост.</p>
+  </div>
+</header>
+
+<div class="nw-goals-layout">
+  <div>
+    <section class="card">
+      <h2 class="card-title">Сектор</h2>
+      <form method="post" action="{{ url_for('networking_goal_sector_create') }}" class="row-form">
+        <input class="input" name="name" placeholder="Название сектора" required>
+        <button class="btn btn--primary" type="submit">Добавить</button>
+      </form>
+    </section>
+    {% for s in sectors %}
+    <details class="card card--collapsible" open>
+      <summary class="card-summary"><span class="card-summary__text">{{ s.name }}</span></summary>
+      <div class="card-collapsible-body">
+        <form method="post" action="{{ url_for('networking_goal_sector_update', sid=s.id) }}" class="row-form" onsubmit="return confirm('Удалить сектор и цели?');">
+          <button class="btn btn--sm btn--danger" name="delete" value="1">Удалить сектор</button>
+        </form>
+        {% for g in s.goals %}
+        <article class="nw-goal">
+          <form method="post" action="{{ url_for('networking_goal_update', gid=g.id) }}" class="stack-form">
+            <div class="row-form">
+              <input class="input" name="title" value="{{ g.title }}">
+              <input class="input" name="horizon" value="{{ g.horizon }}" placeholder="Горизонт">
+              <select name="priority" class="input"><option value="1"{% if g.priority==1 %} selected{% endif %}>1</option><option value="2"{% if g.priority==2 %} selected{% endif %}>2</option><option value="3"{% if g.priority==3 %} selected{% endif %}>3</option></select>
+              <select name="status" class="input">
+                <option value="active"{% if g.status=='active' %} selected{% endif %}>активна</option>
+                <option value="paused"{% if g.status=='paused' %} selected{% endif %}>пауза</option>
+                <option value="done"{% if g.status=='done' %} selected{% endif %}>готово</option>
+              </select>
+              <button class="btn btn--sm btn--primary" type="submit">Ок</button>
+              <button class="btn btn--sm btn--ghost" name="delete" value="1">×</button>
+            </div>
+          </form>
+          <p class="muted">Кто и где / Как</p>
+          {% for l in g.links %}
+          <form method="post" action="{{ url_for('networking_goal_link_update', lid=l.id) }}" class="nw-goal-link">
+            {% if l.contact_id %}
+            <a class="inline-link" href="{{ url_for('networking_contact', contact_id=l.contact_id) }}">{{ l.display_name }}</a>
+            {% else %}
+            <span>{{ l.external_name or 'внешнее имя' }}</span>
+            <button class="btn btn--xs btn--ghost" name="create_contact" value="1">Создать контакт</button>
+            {% endif %}
+            <span class="muted">{{ l.where_to_find }} · {{ l.how_to_reach }}</span>
+            <button class="btn btn--xs btn--ghost" name="delete" value="1">Удалить</button>
+          </form>
+          {% endfor %}
+          <form method="post" action="{{ url_for('networking_goal_link_create') }}" class="row-form">
+            <input type="hidden" name="goal_id" value="{{ g.id }}">
+            <select name="contact_id" class="input">
+              <option value="">Из картотеки</option>
+              {% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}
+            </select>
+            <input class="input" name="external_name" placeholder="Или внешнее имя">
+            <input class="input" name="where_to_find" placeholder="Где">
+            <input class="input" name="how_to_reach" placeholder="Как / кто познакомит">
+            <button class="btn btn--sm btn--primary" type="submit">Связь</button>
+          </form>
+        </article>
+        {% endfor %}
+        <form method="post" action="{{ url_for('networking_goal_create') }}" class="row-form">
+          <input type="hidden" name="sector_id" value="{{ s.id }}">
+          <input class="input" name="title" placeholder="Цель (Что)" required>
+          <input class="input" name="horizon" placeholder="Горизонт">
+          <button class="btn btn--primary" type="submit">Добавить цель</button>
+        </form>
+      </div>
+    </details>
+    {% else %}
+    <p class="muted">Секторов пока нет.</p>
+    {% endfor %}
+  </div>
+  <section class="card">
+    <h2 class="card-title">Диаграмма</h2>
+    <div id="nw-goal-ring" class="nw-goal-ring" data-sectors='{{ sectors|tojson }}'></div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+{% endblock %}

@@ -6,6 +6,7 @@
 <header class="header workdays-page-header">
   <div>
     <h1 class="title">Рабочие дни</h1>
+    <p class="subtitle muted">Учёт задач и отработанного времени по дням</p>
   </div>
 </header>
 <div class="workdays-shell">
@@ -13,9 +14,32 @@
     <button type="button" class="btn btn--ghost" data-open-modal="modal-new-day">Новый день</button>
     <button type="button" class="btn btn--ghost" data-open-modal="modal-export">Экспорт отчёта</button>
     <div class="workdays-filters">
-      <section class="card card--compact workdays-filters-card">
-        <h2 class="card-title card-title--sm">Фильтры</h2>
-        <form method="get" action="{{ url_for('work_days_home') }}" class="stack-form stack-form--compact">
+      <section class="card card--compact workdays-filters-card" id="workdays-filters-card">
+        <script>
+          (function () {
+            try {
+              if (localStorage.getItem('tk-workdays-filters-collapsed') === '1') {
+                document.currentScript.closest('.workdays-filters-card').classList.add('is-collapsed');
+              }
+            } catch (e) {}
+          })();
+        </script>
+        <div class="workdays-filters-head">
+          <h2 class="card-title card-title--sm">Фильтры</h2>
+          <button
+            type="button"
+            class="workdays-filters-toggle"
+            id="workdays-filters-toggle"
+            aria-expanded="true"
+            aria-controls="workdays-filters-form"
+            title="Свернуть фильтры"
+          >
+            <svg class="workdays-filters-toggle__icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+              <path fill="currentColor" d="M7 10l5 5 5-5z"/>
+            </svg>
+          </button>
+        </div>
+        <form method="get" action="{{ url_for('work_days_home') }}" class="stack-form stack-form--compact" id="workdays-filters-form">
           <label class="field field--compact">
             <span class="field-label">Поиск</span>
             <input type="text" name="q" value="{{ filters.q }}" placeholder="Название, итоги…" class="input input--compact">
@@ -148,23 +172,84 @@
 
 <div class="modal" id="modal-export" hidden>
   <div class="modal__backdrop" data-close-modal></div>
-  <div class="modal__dialog" role="dialog" aria-labelledby="modal-export-title">
+  <div class="modal__dialog modal__dialog--wide" role="dialog" aria-labelledby="modal-export-title">
     <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">×</button>
-    <h2 class="modal__title" id="modal-export-title">Экспорт выборки</h2>
+    <h2 class="modal__title" id="modal-export-title">Экспорт отчёта</h2>
     <p class="small-hint muted export-kpi">
-      <span>Дней: <strong>{{ days|length }}</strong></span>
+      <span>По фильтрам: <strong>{{ days|length }}</strong> дн.</span>
       <span><strong>{{ fmt_worked(filtered_total_seconds) }}</strong></span>
     </p>
-    <p class="small-hint muted">Итоги и задачи по каждому дню из текущих фильтров.</p>
+
+    <form id="export-options-form" class="export-options stack-form stack-form--compact">
+      <section class="export-options__section">
+        <h3 class="export-options__heading">Сортировка дней</h3>
+        <div class="filter-grid filter-grid--hours">
+          <label class="field field--compact">
+            <span class="field-label">Параметр</span>
+            <select name="export_sort_by" class="input input--compact">
+              <option value="day_date" {% if filters.sort_by == 'day_date' or filters.sort_by == 'created_at' %}selected{% endif %}>По дате</option>
+              <option value="title" {% if filters.sort_by == 'title' %}selected{% endif %}>По названию</option>
+              <option value="seconds" {% if filters.sort_by == 'seconds' %}selected{% endif %}>По времени</option>
+              <option value="task_count" {% if filters.sort_by == 'task_count' %}selected{% endif %}>По числу задач</option>
+              <option value="session_count" {% if filters.sort_by == 'session_count' %}selected{% endif %}>По числу сессий</option>
+            </select>
+          </label>
+          <label class="field field--compact">
+            <span class="field-label">Порядок</span>
+            <select name="export_sort_dir" class="input input--compact">
+              <option value="desc" {% if filters.sort_dir == 'desc' %}selected{% endif %}>По убыванию</option>
+              <option value="asc" {% if filters.sort_dir == 'asc' %}selected{% endif %}>По возрастанию</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="export-options__section">
+        <h3 class="export-options__heading">Задачи</h3>
+        <div class="filter-grid filter-grid--hours">
+          <label class="field field--compact">
+            <span class="field-label">Сортировка задач</span>
+            <select name="task_sort" class="input input--compact">
+              <option value="seconds" selected>По времени</option>
+              <option value="name">По названию</option>
+            </select>
+          </label>
+          <label class="field field--compact">
+            <span class="field-label">Лимит задач на день</span>
+            <input type="number" name="max_tasks" min="0" step="1" class="input input--compact" placeholder="Все" value="">
+          </label>
+        </div>
+      </section>
+
+      <section class="export-options__section">
+        <h3 class="export-options__heading">Состав отчёта</h3>
+        <div class="export-options__checks">
+          <label class="export-check"><input type="checkbox" name="include_summary_header" value="1" checked> Сводный заголовок</label>
+          <label class="export-check"><input type="checkbox" name="include_day_totals" value="1" checked> Итоги времени по дням</label>
+          <label class="export-check"><input type="checkbox" name="include_tasks" value="1" checked> Список задач</label>
+          <label class="export-check"><input type="checkbox" name="include_session_counts" value="1" checked> Число сессий у задач</label>
+          <label class="export-check"><input type="checkbox" name="include_note" value="1" checked> Итоги работы</label>
+          <label class="export-check"><input type="checkbox" name="include_next_steps" value="1" checked> Дальнейшее направление</label>
+          <label class="export-check"><input type="checkbox" name="include_questions" value="1" checked> Вопросы / проблемы</label>
+        </div>
+      </section>
+
+      <section class="export-options__section">
+        <h3 class="export-options__heading">Пустые значения</h3>
+        <div class="export-options__checks">
+          <label class="export-check"><input type="checkbox" name="show_empty_fields" value="1" checked> Показывать пустые поля (как «-»)</label>
+          <label class="export-check"><input type="checkbox" name="include_empty_days" value="1" checked> Включать дни без времени</label>
+          <label class="export-check"><input type="checkbox" name="include_empty_tasks" value="1" checked> Включать задачи без времени</label>
+        </div>
+      </section>
+    </form>
+
     <div class="modal__actions modal__actions--export">
       <button type="button" class="btn btn--primary" id="multi-export-png">Скачать PNG</button>
-      <a
-        href="{{ url_for('export_multi_report_txt', q=filters.q, date_from=filters.date_from, date_to=filters.date_to, min_hours=filters.min_hours, max_hours=filters.max_hours, has_note=filters.has_note, sort_by=filters.sort_by, sort_dir=filters.sort_dir) }}"
-        class="btn btn--ghost"
-      >
-        Скачать TXT
-      </a>
+      <button type="button" class="btn btn--ghost" id="multi-export-txt">Скачать TXT</button>
+      <button type="button" class="btn btn--ghost" id="multi-export-md">Скачать MD</button>
       <button type="button" class="btn btn--ghost" id="multi-export-copy-txt">Копировать TXT</button>
+      <button type="button" class="btn btn--ghost" id="multi-export-copy-md">Копировать MD</button>
     </div>
   </div>
 </div>
@@ -234,6 +319,28 @@
     return `${y}-${m}-${d}`;
   }
 
+  const filtersCard = document.getElementById('workdays-filters-card');
+  const filtersToggle = document.getElementById('workdays-filters-toggle');
+  const filtersForm = document.getElementById('workdays-filters-form');
+
+  function setFiltersCollapsed(collapsed) {
+    if (!filtersCard || !filtersToggle || !filtersForm) return;
+    filtersCard.classList.toggle('is-collapsed', collapsed);
+    filtersToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    filtersToggle.title = collapsed ? 'Развернуть фильтры' : 'Свернуть фильтры';
+    filtersForm.hidden = collapsed;
+    try {
+      localStorage.setItem('tk-workdays-filters-collapsed', collapsed ? '1' : '0');
+    } catch (_) {}
+  }
+
+  if (filtersToggle) {
+    setFiltersCollapsed(filtersCard.classList.contains('is-collapsed'));
+    filtersToggle.addEventListener('click', () => {
+      setFiltersCollapsed(!filtersCard.classList.contains('is-collapsed'));
+    });
+  }
+
   document.querySelectorAll('.js-range').forEach((btn) => {
     btn.addEventListener('click', () => {
       const from = document.querySelector('input[name="date_from"]');
@@ -251,9 +358,93 @@
   });
 
   const multiExportPng = document.getElementById('multi-export-png');
+  const multiExportTxt = document.getElementById('multi-export-txt');
+  const multiExportMd = document.getElementById('multi-export-md');
   const multiExportCopyTxt = document.getElementById('multi-export-copy-txt');
-  const multiReportDataUrl = {{ url_for('multi_report_data', q=filters.q, date_from=filters.date_from, date_to=filters.date_to, min_hours=filters.min_hours, max_hours=filters.max_hours, has_note=filters.has_note, sort_by=filters.sort_by, sort_dir=filters.sort_dir) | tojson }};
-  const multiReportTxtUrl = {{ url_for('export_multi_report_txt', q=filters.q, date_from=filters.date_from, date_to=filters.date_to, min_hours=filters.min_hours, max_hours=filters.max_hours, has_note=filters.has_note, sort_by=filters.sort_by, sort_dir=filters.sort_dir) | tojson }};
+  const multiExportCopyMd = document.getElementById('multi-export-copy-md');
+  const exportOptionsForm = document.getElementById('export-options-form');
+  const EXPORT_OPTS_KEY = 'tk_export_options_v1';
+  const baseFilterParams = {
+    q: {{ filters.q | tojson }},
+    date_from: {{ filters.date_from | tojson }},
+    date_to: {{ filters.date_to | tojson }},
+    min_hours: {{ filters.min_hours | tojson }},
+    max_hours: {{ filters.max_hours | tojson }},
+    has_note: {{ filters.has_note | tojson }},
+    sort_by: {{ filters.sort_by | tojson }},
+    sort_dir: {{ filters.sort_dir | tojson }},
+  };
+  const multiReportDataBase = {{ url_for('multi_report_data') | tojson }};
+  const multiReportTxtBase = {{ url_for('export_multi_report_txt') | tojson }};
+  const multiReportMdBase = {{ url_for('export_multi_report_md') | tojson }};
+
+  const EXPORT_FLAG_NAMES = [
+    'include_summary_header',
+    'include_day_totals',
+    'include_tasks',
+    'include_session_counts',
+    'include_note',
+    'include_next_steps',
+    'include_questions',
+    'show_empty_fields',
+    'include_empty_days',
+    'include_empty_tasks',
+  ];
+
+  function loadSavedExportOptions() {
+    if (!exportOptionsForm) return;
+    try {
+      const raw = localStorage.getItem(EXPORT_OPTS_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!saved || typeof saved !== 'object') return;
+      for (const [key, value] of Object.entries(saved)) {
+        const el = exportOptionsForm.elements.namedItem(key);
+        if (!el) continue;
+        if (el.type === 'checkbox') {
+          el.checked = value === true || value === '1' || value === 1;
+        } else {
+          el.value = value == null ? '' : String(value);
+        }
+      }
+    } catch (_) {}
+  }
+
+  function persistExportOptions(opts) {
+    try {
+      localStorage.setItem(EXPORT_OPTS_KEY, JSON.stringify(opts));
+    } catch (_) {}
+  }
+
+  function readExportOptions() {
+    const opts = {};
+    if (!exportOptionsForm) return opts;
+    const fd = new FormData(exportOptionsForm);
+    opts.export_sort_by = String(fd.get('export_sort_by') || 'day_date');
+    opts.export_sort_dir = String(fd.get('export_sort_dir') || 'desc');
+    opts.task_sort = String(fd.get('task_sort') || 'seconds');
+    const maxTasks = String(fd.get('max_tasks') || '').trim();
+    if (maxTasks) opts.max_tasks = maxTasks;
+    for (const name of EXPORT_FLAG_NAMES) {
+      const el = exportOptionsForm.elements.namedItem(name);
+      opts[name] = el && el.checked ? '1' : '0';
+    }
+    return opts;
+  }
+
+  function buildExportUrl(base) {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(baseFilterParams)) {
+      if (v !== null && v !== undefined && String(v) !== '') params.set(k, String(v));
+    }
+    const opts = readExportOptions();
+    persistExportOptions(opts);
+    for (const [k, v] of Object.entries(opts)) {
+      params.set(k, String(v));
+    }
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
+  }
 
   function safeFileStem(raw) {
     return (raw || 'report').toLowerCase().replace(/[^a-zа-я0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'report';
@@ -285,13 +476,34 @@
     if (!ok) throw new Error('copy failed');
   }
 
+  function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    if (!words.length) return y;
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? (line + ' ' + word) : word;
+      if (ctx.measureText(candidate).width <= maxWidth) {
+        line = candidate;
+      } else {
+        ctx.fillText(line, x, y);
+        y += lineHeight;
+        line = word;
+      }
+    }
+    if (line) {
+      ctx.fillText(line, x, y);
+      y += lineHeight;
+    }
+    return y;
+  }
+
   async function exportMultiCopyTxt() {
     if (!multiExportCopyTxt) return;
     const prev = multiExportCopyTxt.textContent;
     multiExportCopyTxt.disabled = true;
     multiExportCopyTxt.textContent = 'Копируем…';
     try {
-      const res = await fetch(multiReportTxtUrl, { headers: { Accept: 'text/plain; charset=utf-8' } });
+      const res = await fetch(buildExportUrl(multiReportTxtBase), { headers: { Accept: 'text/plain; charset=utf-8' } });
       if (!res.ok) throw new Error('Не удалось получить отчёт');
       await copyTextToClipboard(await res.text());
       multiExportCopyTxt.textContent = 'Скопировано!';
@@ -307,22 +519,93 @@
     }
   }
 
+  async function exportMultiCopyMd() {
+    if (!multiExportCopyMd) return;
+    const prev = multiExportCopyMd.textContent;
+    multiExportCopyMd.disabled = true;
+    multiExportCopyMd.textContent = 'Копируем…';
+    try {
+      const res = await fetch(buildExportUrl(multiReportMdBase), { headers: { Accept: 'text/markdown; charset=utf-8' } });
+      if (!res.ok) throw new Error('Не удалось получить отчёт');
+      await copyTextToClipboard(await res.text());
+      multiExportCopyMd.textContent = 'Скопировано!';
+      setTimeout(() => closeModal(document.getElementById('modal-export')), 600);
+    } catch (_) {
+      alert('Не удалось скопировать отчёт в буфер обмена');
+      multiExportCopyMd.textContent = prev;
+    } finally {
+      multiExportCopyMd.disabled = false;
+      setTimeout(() => {
+        multiExportCopyMd.textContent = prev;
+      }, 1800);
+    }
+  }
+
+  async function downloadTextExport(btn, url, filename, accept) {
+    if (!btn) return;
+    const prev = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Готовим…';
+    try {
+      const res = await fetch(url, { headers: { Accept: accept } });
+      if (!res.ok) throw new Error('Не удалось получить отчёт');
+      const text = await res.text();
+      const blob = new Blob([text], { type: accept.includes('markdown') ? 'text/markdown;charset=utf-8' : 'text/plain;charset=utf-8' });
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+      closeModal(document.getElementById('modal-export'));
+    } catch (_) {
+      alert('Не удалось скачать отчёт');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = prev;
+    }
+  }
+
+  async function exportMultiTxt() {
+    await downloadTextExport(
+      multiExportTxt,
+      buildExportUrl(multiReportTxtBase),
+      'work_days_report.txt',
+      'text/plain; charset=utf-8'
+    );
+  }
+
+  async function exportMultiMd() {
+    await downloadTextExport(
+      multiExportMd,
+      buildExportUrl(multiReportMdBase),
+      'work_days_report.md',
+      'text/markdown; charset=utf-8'
+    );
+  }
+
   async function exportMultiPng() {
     if (!multiExportPng) return;
     multiExportPng.disabled = true;
     multiExportPng.textContent = 'Готовим PNG…';
     try {
-      const res = await fetch(multiReportDataUrl, { headers: { Accept: 'application/json' } });
+      const res = await fetch(buildExportUrl(multiReportDataBase), { headers: { Accept: 'application/json' } });
       if (!res.ok) throw new Error('Не удалось получить данные');
       const report = await res.json();
+      const opts = report.options || {};
       const width = 1200;
       const padding = 56;
       const rowHeight = 30;
       const count = (report.days || []).length;
       const extraHeight = (report.days || []).reduce((acc, day) => {
-        const taskLines = Math.min(4, (day.tasks || []).length);
-        const noteLines = day.note ? Math.ceil(day.note.length / 80) : 0;
-        return acc + taskLines * 22 + noteLines * 18 + 24;
+        const taskLines = opts.include_tasks === false ? 0 : Math.min(8, (day.tasks || []).length);
+        const noteLines = (opts.include_note !== false && day.note) ? Math.ceil(String(day.note).length / 80) : 0;
+        const nextLines = (opts.include_next_steps !== false && day.next_steps) ? Math.ceil(String(day.next_steps).length / 80) : 0;
+        const qLines = (opts.include_questions !== false && day.questions) ? Math.ceil(String(day.questions).length / 80) : 0;
+        const emptyPad = opts.show_empty_fields === false ? 0 : 0;
+        return acc + taskLines * 22 + noteLines * 18 + nextLines * 18 + qLines * 18 + emptyPad + 36;
       }, 0);
       const height = Math.max(560, 240 + count * rowHeight + extraHeight + 110);
 
@@ -333,16 +616,22 @@
       ctx.fillStyle = '#0f1218';
       ctx.fillRect(0, 0, width, height);
 
-      ctx.fillStyle = '#e8eaef';
-      ctx.font = '700 40px "Segoe UI", sans-serif';
-      ctx.fillText('Отчёт по нескольким рабочим дням', padding, 70);
+      let y = 70;
+      if (opts.include_summary_header !== false) {
+        ctx.fillStyle = '#e8eaef';
+        ctx.font = '700 40px "Segoe UI", sans-serif';
+        ctx.fillText('Отчёт по нескольким рабочим дням', padding, y);
+        y += 38;
+        ctx.fillStyle = '#8b93a7';
+        ctx.font = '500 20px "Segoe UI", sans-serif';
+        ctx.fillText(`Дней: ${report.summary.days_count} · Всего: ${report.summary.total_duration}`, padding, y);
+        y += 30;
+        ctx.fillText(`Задач: ${report.summary.task_count} · Сессий: ${report.summary.session_count}`, padding, y);
+        y += 42;
+      } else {
+        y = 56;
+      }
 
-      ctx.fillStyle = '#8b93a7';
-      ctx.font = '500 20px "Segoe UI", sans-serif';
-      ctx.fillText(`Дней: ${report.summary.days_count} · Всего: ${report.summary.total_duration}`, padding, 108);
-      ctx.fillText(`Задач: ${report.summary.task_count} · Сессий: ${report.summary.session_count}`, padding, 138);
-
-      let y = 180;
       ctx.font = '400 17px "Segoe UI", sans-serif';
       for (const day of (report.days || [])) {
         ctx.fillStyle = '#151b27';
@@ -352,26 +641,46 @@
         ctx.fillStyle = '#d4d8e2';
         ctx.fillText(day.day_local || '', width - padding - 230, y);
         y += 24;
-        ctx.fillStyle = '#9faccc';
-        ctx.fillText(
-          `Время: ${day.formatted_duration || ''} · задач: ${day.task_count} (решено: ${day.resolved_tasks_count || 0}) · сессий: ${day.session_count}`,
-          padding, y
-        );
-        y += 24;
-        if (day.note) {
-          ctx.fillStyle = '#cfd8ef';
-          const note = day.note.length > 170 ? day.note.slice(0, 170) + '…' : day.note;
-          ctx.fillText(`Итоги: ${note}`, padding, y);
-          y += 22;
+        if (opts.include_day_totals !== false) {
+          ctx.fillStyle = '#9faccc';
+          ctx.fillText(
+            `Время: ${day.formatted_duration || ''} · задач: ${day.task_count} (решено: ${day.resolved_tasks_count || 0}) · сессий: ${day.session_count}`,
+            padding, y
+          );
+          y += 24;
         }
-        const tasks = (day.tasks || []).slice(0, 4);
-        if (tasks.length) {
-          ctx.fillStyle = '#8b93a7';
-          ctx.fillText('Задачи:', padding, y);
-          y += 20;
-          for (const t of tasks) {
-            ctx.fillStyle = '#d4d8e2';
-            ctx.fillText(`• ${t.name} — ${t.duration}`, padding + 14, y);
+
+        const showEmpty = opts.show_empty_fields !== false;
+        const sections = [
+          { on: opts.include_note !== false, label: 'Итоги', value: day.note },
+          { on: opts.include_next_steps !== false, label: 'Далее', value: day.next_steps },
+          { on: opts.include_questions !== false, label: 'Вопросы', value: day.questions },
+        ];
+        for (const section of sections) {
+          if (!section.on) continue;
+          const text = String(section.value || '').trim();
+          if (!text && !showEmpty) continue;
+          ctx.fillStyle = '#cfd8ef';
+          const body = text || '-';
+          const clipped = body.length > 170 ? body.slice(0, 170) + '…' : body;
+          y = drawWrappedText(ctx, `${section.label}: ${clipped}`, padding, y, width - padding * 2, 20) + 4;
+        }
+
+        if (opts.include_tasks !== false) {
+          const tasks = day.tasks || [];
+          if (tasks.length) {
+            ctx.fillStyle = '#8b93a7';
+            ctx.fillText('Задачи:', padding, y);
+            y += 20;
+            for (const t of tasks) {
+              ctx.fillStyle = '#d4d8e2';
+              const sess = opts.include_session_counts !== false ? ` (${t.session_count} сесс.)` : '';
+              ctx.fillText(`• ${t.name} — ${t.duration}${sess}`, padding + 14, y);
+              y += 20;
+            }
+          } else if (showEmpty) {
+            ctx.fillStyle = '#8b93a7';
+            ctx.fillText('Задачи: -', padding, y);
             y += 20;
           }
         }
@@ -393,12 +702,22 @@
     }
   }
 
+  loadSavedExportOptions();
+
   if (multiExportPng) {
     multiExportPng.addEventListener('click', exportMultiPng);
   }
-
+  if (multiExportTxt) {
+    multiExportTxt.addEventListener('click', exportMultiTxt);
+  }
+  if (multiExportMd) {
+    multiExportMd.addEventListener('click', exportMultiMd);
+  }
   if (multiExportCopyTxt) {
     multiExportCopyTxt.addEventListener('click', exportMultiCopyTxt);
+  }
+  if (multiExportCopyMd) {
+    multiExportCopyMd.addEventListener('click', exportMultiCopyMd);
   }
 </script>
 {% endblock %}

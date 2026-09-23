@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}{{ org.name }} — организация{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">{{ org.name }}</h1>
+    <p class="subtitle muted"><a class="inline-link" href="{{ url_for('networking_orgs') }}">← Все организации</a></p>
+  </div>
+  <form method="post" action="{{ url_for('networking_org_update', org_id=org.id) }}" onsubmit="return confirm('Удалить организацию?');">
+    <button class="btn btn--danger btn--sm" name="delete" value="1">Удалить</button>
+  </form>
+</header>
+
+<form method="post" action="{{ url_for('networking_org_update', org_id=org.id) }}" class="card stack-form">
+  <div class="nw-grid-2">
+    <label class="field">Название <input class="input" name="name" value="{{ org.name }}"></label>
+    <label class="field">Тип
+      <select name="kind" class="input">{% for k,v in nw_org_kinds.items() %}<option value="{{ k }}"{% if org.kind==k %} selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+    </label>
+    <label class="field">Стиль решений
+      <select name="decision_style" class="input" id="decision-style">
+        {% for k,v in nw_decision.items() %}<option value="{{ k }}"{% if org.decision_style==k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <p class="muted" id="decision-hint">{{ decision_hints.get(org.decision_style, '') }}</p>
+  <label class="field">Моя цель <textarea class="input" name="my_goal" rows="2">{{ org.my_goal }}</textarea></label>
+  <label class="field">Мосты / входы <textarea class="input" name="bridges_notes" rows="2">{{ org.bridges_notes }}</textarea></label>
+  <label class="field">Инсайдеры-гиды <textarea class="input" name="condensers_notes" rows="2">{{ org.condensers_notes }}</textarea></label>
+  <label class="field">Заметки <textarea class="input" name="notes" rows="2">{{ org.notes }}</textarea></label>
+  <button class="btn btn--primary" type="submit">Сохранить</button>
+</form>
+
+<div class="nw-org-layout">
+  <div class="nw-map nw-map--org">
+    <canvas id="nw-org-canvas" class="nw-map__canvas"></canvas>
+    <p class="muted">Кольца: ядро власти · второй круг · периферия. Жёлтая обводка — кандидаты для сближения.</p>
+  </div>
+  <div>
+    <section class="card">
+      <h2 class="card-title">Подразделения</h2>
+      {% for u in units %}
+      <form method="post" action="{{ url_for('networking_org_unit_update', uid=u.id) }}" class="row-form">
+        <input class="input" name="name" value="{{ u.name }}">
+        <button class="btn btn--sm btn--primary">Ок</button>
+        <button class="btn btn--sm btn--ghost" name="delete" value="1">×</button>
+      </form>
+      {% endfor %}
+      <form method="post" action="{{ url_for('networking_org_unit_create', org_id=org.id) }}" class="row-form">
+        <input class="input" name="name" placeholder="Сектор" required>
+        <button class="btn btn--sm btn--primary">Добавить</button>
+      </form>
+    </section>
+    <section class="card">
+      <h2 class="card-title">Властные группы</h2>
+      {% for p in pgroups %}
+      <form method="post" action="{{ url_for('networking_org_pg_update', pid=p.id) }}" class="row-form">
+        <input class="input" name="name" value="{{ p.name }}">
+        <input class="input" type="color" name="color" value="{{ p.color }}">
+        <button class="btn btn--sm btn--primary">Ок</button>
+        <button class="btn btn--sm btn--ghost" name="delete" value="1">×</button>
+      </form>
+      {% endfor %}
+      <form method="post" action="{{ url_for('networking_org_pg_create', org_id=org.id) }}" class="row-form">
+        <input class="input" name="name" placeholder="Группа" required>
+        <input class="input" type="color" name="color" value="#e08a5b">
+        <button class="btn btn--sm btn--primary">Добавить</button>
+      </form>
+    </section>
+  </div>
+</div>
+
+<section class="card">
+  <h2 class="card-title">Участники</h2>
+  <p class="muted">Кандидат для сближения: влияет на решения, есть властная группа, потенциал роста и открыт к вам.</p>
+  <ul class="nw-list">
+    {% for mem in members %}
+    <li class="nw-list__row">
+      <div>
+        {% if mem.is_candidate %}<span class="nw-pill nw-pill--ok">кандидат</span>{% endif %}
+        <strong>{{ mem.name }}</strong>
+        <span class="muted"> · {{ nw_org_rings.get(mem.ring, mem.ring) }} · {{ mem.role_title }}</span>
+        {% if mem.is_visionary %}<span class="nw-pill">визионер</span>{% endif %}
+        {% if mem.is_rising_star %}<span class="nw-pill">восходящая звезда</span>{% endif %}
+      </div>
+      <form method="post" action="{{ url_for('networking_org_member_update', mid=mem.id) }}" class="inline-form">
+        <button class="btn btn--sm btn--ghost" name="delete" value="1">Удалить</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="{{ url_for('networking_org_member_create', org_id=org.id) }}" class="nw-grid-2">
+    <label class="field">Контакт
+      <select name="contact_id" class="input"><option value="">—</option>{% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}</select>
+    </label>
+    <label class="field">Или внешнее имя <input class="input" name="external_name"></label>
+    <label class="field">Подразделение
+      <select name="unit_id" class="input"><option value="">—</option>{% for u in units %}<option value="{{ u.id }}">{{ u.name }}</option>{% endfor %}</select>
+    </label>
+    <label class="field">Властная группа
+      <select name="power_group_id" class="input"><option value="">—</option>{% for p in pgroups %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select>
+    </label>
+    <label class="field">Кольцо
+      <select name="ring" class="input">{% for k,v in nw_org_rings.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+    </label>
+    <label class="field">Должность <input class="input" name="role_title"></label>
+    <label class="field">Формальная власть 0–3 <input class="input" type="number" min="0" max="3" name="formal_power" value="1"></label>
+    <label class="field">Неформальная 0–3 <input class="input" type="number" min="0" max="3" name="informal_power" value="1"></label>
+    <label class="nw-check"><input type="checkbox" name="influences_decision" value="1"> Влияет на решения</label>
+    <label class="nw-check"><input type="checkbox" name="growth_potential" value="1"> Потенциал роста</label>
+    <label class="nw-check"><input type="checkbox" name="open_to_me" value="1"> Открыт ко мне</label>
+    <label class="nw-check"><input type="checkbox" name="is_visionary" value="1"> Визионер</label>
+    <label class="nw-check"><input type="checkbox" name="is_rising_star" value="1"> Восходящая звезда</label>
+    <button class="btn btn--primary" type="submit">Добавить участника</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2 class="card-title">Связи</h2>
+  <form method="post" action="{{ url_for('networking_org_edge_create', org_id=org.id) }}" class="row-form">
+    <select name="a_id" class="input">{% for mem in members %}<option value="{{ mem.id }}">{{ mem.name }}</option>{% endfor %}</select>
+    <select name="b_id" class="input">{% for mem in members %}<option value="{{ mem.id }}">{{ mem.name }}</option>{% endfor %}</select>
+    <select name="kind" class="input">{% for k,v in nw_edge_kind.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+    <select name="quality" class="input">
+      <option value="positive">позитив</option>
+      <option value="neutral" selected>нейтраль</option>
+      <option value="problem">проблема</option>
+    </select>
+    <button class="btn btn--primary" type="submit">Связь</button>
+  </form>
+  <ul class="nw-list">
+    {% for e in edges %}
+    <li class="nw-list__row">
+      <span>{{ e.kind }} · {{ e.quality }}</span>
+      <form method="post" action="{{ url_for('networking_org_edge_delete', eid=e.id) }}"><button class="btn btn--xs btn--ghost">×</button></form>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  window.NW_ORG = {
+    dataUrl: {{ url_for('networking_org_data', org_id=org.id)|tojson }},
+    posUrl: {{ url_for('networking_org_member_update', mid=0)|tojson }},
+    hints: {{ decision_hints|tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+<script src="{{ url_for('static', filename='networking_org.js') }}"></script>
+{% endblock %}

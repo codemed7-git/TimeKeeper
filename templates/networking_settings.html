@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Настройки — Нетворкинг{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Настройки</h1>
+    <p class="subtitle muted">Каденции, ориентиры, приватность, справочники. База локальная — имеет смысл шифрование диска ОС.</p>
+  </div>
+</header>
+
+<form method="post" action="{{ url_for('networking_settings_save') }}" class="card stack-form">
+  <h2 class="card-title">Каденции списков, дни</h2>
+  <div class="nw-grid-3">
+    <label class="field">Список 1 <input class="input" name="cadence_list_1" value="{{ settings.cadence_list_1 }}"></label>
+    <label class="field">Список 2 <input class="input" name="cadence_list_2" value="{{ settings.cadence_list_2 }}"></label>
+    <label class="field">Список 3 <input class="input" name="cadence_list_3" value="{{ settings.cadence_list_3 }}"></label>
+  </div>
+  <label class="field">Упреждение ДР по умолчанию (csv дней) <input class="input" name="birthday_lead_days" value="{{ settings.birthday_lead_days }}"></label>
+  <h2 class="card-title">Ориентиры кругов</h2>
+  <div class="nw-grid-3">
+    <label class="field">Поддержка <input class="input" name="target_support" value="{{ settings.target_support }}"></label>
+    <label class="field">Продуктивность <input class="input" name="target_productivity" value="{{ settings.target_productivity }}"></label>
+    <label class="field">Развитие <input class="input" name="target_development" value="{{ settings.target_development }}"></label>
+  </div>
+  <label class="field">Ориентир годового обновления, % <input class="input" name="churn_target_pct" value="{{ settings.churn_target_pct }}"></label>
+  <label class="nw-check"><input type="checkbox" name="mask_confidential" value="1"{% if settings.mask_confidential == '1' %} checked{% endif %}> Маскировать конфиденциальные поля</label>
+  <button class="btn btn--primary" type="submit">Сохранить и пересчитать сроки</button>
+</form>
+
+<section class="card">
+  <h2 class="card-title">PIN на раздел</h2>
+  <form method="post" action="{{ url_for('networking_settings_save') }}" class="stack-form">
+    {% if settings.pin_hash %}
+    <label class="field">Текущий PIN <input class="input" type="password" name="pin_current" autocomplete="off"></label>
+    {% endif %}
+    <label class="field">Новый PIN <input class="input" type="password" name="pin" autocomplete="off"></label>
+    <label class="field">Ещё раз <input class="input" type="password" name="pin_confirm" autocomplete="off"></label>
+    <input type="hidden" name="pin_action" value="set">
+    <button class="btn btn--primary" type="submit">{% if settings.pin_hash %}Сменить PIN{% else %}Задать PIN и включить защиту{% endif %}</button>
+  </form>
+  {% if settings.pin_hash %}
+  <form method="post" action="{{ url_for('networking_settings_save') }}" class="stack-form">
+    <input type="hidden" name="pin_action" value="clear">
+    <label class="field">Текущий PIN для снятия <input class="input" type="password" name="pin_current" autocomplete="off"></label>
+    <button class="btn btn--ghost" type="submit">Снять PIN</button>
+  </form>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2 class="card-title">Импорт и экспорт</h2>
+  <p><a class="btn btn--primary" href="{{ url_for('networking_import') }}">Импорт CSV / vCard</a></p>
+  <label class="nw-check"><input type="checkbox" id="nw-export-conf"> Включить конфиденциальные данные</label>
+  <p class="nw-header-actions">
+    <a class="btn btn--ghost" id="nw-csv" href="{{ url_for('networking_export_csv') }}">contacts.csv</a>
+    <a class="btn btn--ghost" id="nw-md" href="{{ url_for('networking_export_md') }}">сеть.md</a>
+  </p>
+</section>
+
+<section class="card">
+  <h2 class="card-title">Секторы карты</h2>
+  <p class="muted">Типовые: Работа, Клиенты, Учёба, Досуг, Семья и дом, Родной город.</p>
+  {% for s in sectors %}
+  <form method="post" action="{{ url_for('networking_sector_update', sid=s.id) }}" class="row-form">
+    <input class="input" name="name" value="{{ s.name }}">
+    <button class="btn btn--sm btn--ghost" name="move" value="up">↑</button>
+    <button class="btn btn--sm btn--ghost" name="move" value="down">↓</button>
+    <button class="btn btn--sm btn--primary">Ок</button>
+    <button class="btn btn--sm btn--ghost" name="delete" value="1">×</button>
+  </form>
+  {% endfor %}
+  <form method="post" action="{{ url_for('networking_sector_create') }}" class="row-form">
+    <input class="input" name="name" required placeholder="Сектор">
+    <button class="btn btn--primary">Добавить</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2 class="card-title">Группы интересов</h2>
+  {% for g in groups %}
+  <form method="post" action="{{ url_for('networking_group_update', gid=g.id) }}" class="row-form">
+    <input class="input" name="name" value="{{ g.name }}">
+    <input class="input" type="color" name="color" value="{{ g.color }}">
+    <button class="btn btn--sm btn--primary">Ок</button>
+    <button class="btn btn--sm btn--ghost" name="delete" value="1">×</button>
+  </form>
+  {% endfor %}
+  <form method="post" action="{{ url_for('networking_group_create') }}" class="row-form">
+    <input class="input" name="name" required placeholder="Группа">
+    <input class="input" type="color" name="color" value="#6aa9ff">
+    <button class="btn btn--primary">Добавить</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2 class="card-title">Секторы целей</h2>
+  {% for s in goal_sectors %}
+  <form method="post" action="{{ url_for('networking_goal_sector_update', sid=s.id) }}" class="row-form">
+    <input type="hidden" name="from" value="settings">
+    <input class="input" name="name" value="{{ s.name }}">
+    <button class="btn btn--sm btn--primary">Ок</button>
+    <button class="btn btn--sm btn--ghost" name="delete" value="1">×</button>
+  </form>
+  {% endfor %}
+  <form method="post" action="{{ url_for('networking_goal_sector_create') }}" class="row-form">
+    <input type="hidden" name="from" value="settings">
+    <input class="input" name="name" required placeholder="Сектор целей">
+    <button class="btn btn--primary">Добавить</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2 class="card-title">Общие праздники</h2>
+  <ul class="nw-list">
+    {% for h in holidays %}
+    <li class="nw-list__row">
+      <span>{{ h.title }} — {{ '%02d'|format(h.day) }}.{{ '%02d'|format(h.month) }}</span>
+      <form method="post" action="{{ url_for('networking_date_update', date_id=h.id) }}"><button class="btn btn--xs btn--ghost" name="delete" value="1">×</button></form>
+    </li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="{{ url_for('networking_holiday_create') }}" class="row-form">
+    <input class="input" name="title" placeholder="Название" required>
+    <input class="input" type="number" min="1" max="12" name="month" placeholder="мес" required>
+    <input class="input" type="number" min="1" max="31" name="day" placeholder="день" required>
+    <input class="input" name="lead_days" placeholder="7,1,0">
+    <button class="btn btn--primary">Добавить</button>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Ежемесячный разбор — Нетворкинг{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Ежемесячный разбор сети</h1>
+    <p class="subtitle muted">Период {{ period }}</p>
+  </div>
+</header>
+<form method="get" class="row-form">
+  <input class="input" type="month" name="period" value="{{ period }}">
+  <button class="btn btn--ghost">Открыть</button>
+</form>
+<form method="post" action="{{ url_for('networking_review_save') }}" class="stack-form">
+  <input type="hidden" name="period" value="{{ period }}">
+  <section class="card">
+    <h2 class="card-title">Шаг 1. Соответствие сети целям</h2>
+    <p class="muted">Ключевые контакты:</p>
+    <ul>{% for c in key_contacts %}<li><a class="inline-link" href="{{ url_for('networking_contact', contact_id=c.id) }}">{{ c.display_name }}</a></li>{% else %}<li class="muted">Пометьте ключевых в карточках.</li>{% endfor %}</ul>
+    <p class="muted">Проблемные (по последним диагнозам):</p>
+    <ul>{% for c in problem_contacts %}<li><a class="inline-link" href="{{ url_for('networking_contact', contact_id=c.id) }}">{{ c.display_name }}</a></li>{% else %}<li class="muted">Нет отмеченных проблем.</li>{% endfor %}</ul>
+    <textarea class="input" name="step1_fit" rows="4" placeholder="Выводы">{{ review.step1_fit }}</textarea>
+  </section>
+  <section class="card">
+    <h2 class="card-title">Шаг 2. Желаемые изменения</h2>
+    <p class="muted">С кем познакомиться, кто может свести, кого в наставники. Связи можно добавить в «Цели» и «Каталоги».</p>
+    <textarea class="input" name="step2_changes" rows="4">{{ review.step2_changes }}</textarea>
+  </section>
+  <section class="card">
+    <h2 class="card-title">Шаг 3. План на месяц</h2>
+    <textarea class="input" name="step3_plan" rows="3">{{ review.step3_plan }}</textarea>
+    <p class="muted">Новые задачи (появятся на обзоре):</p>
+    <div id="nw-review-actions">
+      <div class="row-form">
+        <input class="input" name="action_title" placeholder="Задача">
+        <input class="input" type="date" name="action_due">
+        <select name="action_contact" class="input"><option value="">контакт</option>{% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}</select>
+      </div>
+      <div class="row-form">
+        <input class="input" name="action_title" placeholder="Задача">
+        <input class="input" type="date" name="action_due">
+        <select name="action_contact" class="input"><option value="">контакт</option>{% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}</select>
+      </div>
+    </div>
+    {% if actions %}
+    <p class="muted">Уже созданные в этом месяце:</p>
+    <ul>{% for a in actions %}<li>{{ a.title }} · {{ a.due_date or '' }}</li>{% endfor %}</ul>
+    {% endif %}
+    <button class="btn btn--primary" type="submit">Сохранить разбор</button>
+  </section>
+</form>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+{% endblock %}

@@ -11,23 +11,14 @@
     </p>
   </div>
   <div class="header-totals-wrap">
-    <div class="dropdown header-totals-wrap__export" id="report-dropdown">
-      <button
-        type="button"
-        class="btn btn--ghost btn--sm"
-        id="export-menu-toggle"
-        aria-haspopup="true"
-        aria-expanded="false"
-        title="Экспорт отчёта"
-      >
-        Экспорт отчёта ▾
-      </button>
-      <div class="dropdown-menu" id="export-menu" role="menu" hidden>
-        <button type="button" class="dropdown-item" id="export-png" role="menuitem">PNG</button>
-        <a href="{{ url_for('export_report_txt', work_day_id=wd.id) }}" class="dropdown-item" role="menuitem">TXT</a>
-        <button type="button" class="dropdown-item" id="export-copy-txt" role="menuitem">Копировать TXT</button>
-      </div>
-    </div>
+    <button
+      type="button"
+      class="btn btn--ghost btn--sm"
+      data-open-modal="modal-export-day"
+      title="Экспорт отчёта"
+    >
+      Экспорт отчёта
+    </button>
     <div class="totals-card">
       <div class="totals-label">Время за этот рабочий день</div>
       <div class="totals-value mono" id="day-total">{{ fmt(day_total_seconds) }}</div>
@@ -182,16 +173,149 @@
     </form>
   </div>
 </div>
+
+<div class="modal" id="modal-export-day" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog modal__dialog--wide" role="dialog" aria-labelledby="modal-export-day-title">
+    <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">×</button>
+    <h2 class="modal__title" id="modal-export-day-title">Экспорт отчёта</h2>
+    <form id="export-day-options-form" class="export-options stack-form stack-form--compact">
+      <section class="export-options__section">
+        <h3 class="export-options__heading">Задачи</h3>
+        <div class="filter-grid filter-grid--hours">
+          <label class="field field--compact">
+            <span class="field-label">Сортировка</span>
+            <select name="task_sort" class="input input--compact">
+              <option value="seconds" selected>По времени</option>
+              <option value="name">По названию</option>
+            </select>
+          </label>
+          <label class="field field--compact">
+            <span class="field-label">Лимит задач</span>
+            <input type="number" name="max_tasks" min="0" step="1" class="input input--compact" placeholder="Все" value="">
+          </label>
+        </div>
+      </section>
+      <section class="export-options__section">
+        <h3 class="export-options__heading">Состав отчёта</h3>
+        <div class="export-options__checks">
+          <label class="export-check"><input type="checkbox" name="include_day_totals" value="1" checked> Итоги времени</label>
+          <label class="export-check"><input type="checkbox" name="include_tasks" value="1" checked> Список задач</label>
+          <label class="export-check"><input type="checkbox" name="include_session_counts" value="1" checked> Число сессий</label>
+          <label class="export-check"><input type="checkbox" name="include_note" value="1" checked> Итоги работы</label>
+          <label class="export-check"><input type="checkbox" name="include_next_steps" value="1" checked> Дальнейшее направление</label>
+          <label class="export-check"><input type="checkbox" name="include_questions" value="1" checked> Вопросы / проблемы</label>
+        </div>
+      </section>
+      <section class="export-options__section">
+        <h3 class="export-options__heading">Пустые значения</h3>
+        <div class="export-options__checks">
+          <label class="export-check"><input type="checkbox" name="show_empty_fields" value="1" checked> Показывать пустые поля (как «-»)</label>
+          <label class="export-check"><input type="checkbox" name="include_empty_tasks" value="1" checked> Включать задачи без времени</label>
+        </div>
+      </section>
+    </form>
+    <div class="modal__actions modal__actions--export">
+      <button type="button" class="btn btn--primary" id="export-png">Скачать PNG</button>
+      <button type="button" class="btn btn--ghost" id="export-txt">Скачать TXT</button>
+      <button type="button" class="btn btn--ghost" id="export-md">Скачать MD</button>
+      <button type="button" class="btn btn--ghost" id="export-copy-txt">Копировать TXT</button>
+      <button type="button" class="btn btn--ghost" id="export-copy-md">Копировать MD</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
   const workDayId = {{ wd.id }};
   const apiUrl = {{ url_for('api_state', work_day_id=wd.id) | tojson }};
-  const reportDataUrl = {{ url_for('report_data', work_day_id=wd.id) | tojson }};
-  const reportTxtUrl = {{ url_for('export_report_txt', work_day_id=wd.id) | tojson }};
+  const reportDataBase = {{ url_for('report_data', work_day_id=wd.id) | tojson }};
+  const reportTxtBase = {{ url_for('export_report_txt', work_day_id=wd.id) | tojson }};
+  const reportMdBase = {{ url_for('export_report_md', work_day_id=wd.id) | tojson }};
   const taskDataUrlTpl = {{ url_for('task_data', work_day_id=wd.id, task_id=0) | tojson }};
   const taskEditUrlTpl = {{ url_for('task_edit', work_day_id=wd.id, task_id=0) | tojson }};
+  const exportDayForm = document.getElementById('export-day-options-form');
+  const EXPORT_DAY_OPTS_KEY = 'tk_export_day_options_v1';
+  const EXPORT_DAY_FLAGS = [
+    'include_day_totals',
+    'include_tasks',
+    'include_session_counts',
+    'include_note',
+    'include_next_steps',
+    'include_questions',
+    'show_empty_fields',
+    'include_empty_tasks',
+  ];
+
+  function openModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.hidden = false;
+    document.body.classList.add('modal-open');
+    const focusable = el.querySelector('input, textarea, button, select, a');
+    if (focusable) focusable.focus();
+  }
+
+  function closeModal(el) {
+    if (!el) return;
+    el.hidden = true;
+    if (!document.querySelector('.modal:not([hidden])')) {
+      document.body.classList.remove('modal-open');
+    }
+  }
+
+  document.querySelectorAll('[data-open-modal]').forEach((btn) => {
+    btn.addEventListener('click', () => openModal(btn.dataset.openModal));
+  });
+
+  document.querySelectorAll('#modal-export-day [data-close-modal]').forEach((btn) => {
+    btn.addEventListener('click', () => closeModal(btn.closest('.modal')));
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    const exportModal = document.getElementById('modal-export-day');
+    if (exportModal && !exportModal.hidden) closeModal(exportModal);
+  });
+
+  function loadSavedDayExportOptions() {
+    if (!exportDayForm) return;
+    try {
+      const raw = localStorage.getItem(EXPORT_DAY_OPTS_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!saved || typeof saved !== 'object') return;
+      for (const [key, value] of Object.entries(saved)) {
+        const el = exportDayForm.elements.namedItem(key);
+        if (!el) continue;
+        if (el.type === 'checkbox') el.checked = Boolean(value === true || value === '1' || value === 1);
+        else el.value = value == null ? '' : String(value);
+      }
+    } catch (_) {}
+  }
+
+  function readDayExportOptions() {
+    const opts = {};
+    if (!exportDayForm) return opts;
+    const fd = new FormData(exportDayForm);
+    opts.task_sort = String(fd.get('task_sort') || 'seconds');
+    const maxTasks = String(fd.get('max_tasks') || '').trim();
+    if (maxTasks) opts.max_tasks = maxTasks;
+    for (const name of EXPORT_DAY_FLAGS) {
+      const el = exportDayForm.elements.namedItem(name);
+      opts[name] = el && el.checked ? '1' : '0';
+    }
+    return opts;
+  }
+
+  function buildDayExportUrl(base) {
+    const opts = readDayExportOptions();
+    try { localStorage.setItem(EXPORT_DAY_OPTS_KEY, JSON.stringify(opts)); } catch (_) {}
+    const params = new URLSearchParams(opts);
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
+  }
 
   function parseIso(s) {
     if (!s) return null;
@@ -242,49 +366,6 @@
   setInterval(refresh, 1000);
   refresh();
 
-  const exportMenuToggle = document.getElementById('export-menu-toggle');
-  const exportMenu = document.getElementById('export-menu');
-  const reportDropdown = document.getElementById('report-dropdown');
-
-  function closeExportMenu() {
-    if (!exportMenu || !exportMenuToggle) return;
-    exportMenu.hidden = true;
-    exportMenuToggle.setAttribute('aria-expanded', 'false');
-  }
-
-  function openExportMenu() {
-    if (!exportMenu || !exportMenuToggle) return;
-    exportMenu.hidden = false;
-    exportMenuToggle.setAttribute('aria-expanded', 'true');
-  }
-
-  if (exportMenuToggle && exportMenu && reportDropdown) {
-    exportMenuToggle.addEventListener('click', () => {
-      if (exportMenu.hidden) {
-        openExportMenu();
-      } else {
-        closeExportMenu();
-      }
-    });
-
-    document.addEventListener('click', (event) => {
-      if (!reportDropdown.contains(event.target)) {
-        closeExportMenu();
-      }
-    });
-
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        closeExportMenu();
-      }
-    });
-
-    exportMenu.addEventListener('click', () => {
-      // Close after selecting any export format.
-      closeExportMenu();
-    });
-  }
-
   function safeFileStem(raw) {
     return (raw || 'report').toLowerCase().replace(/[^a-zа-я0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'report';
   }
@@ -332,15 +413,15 @@
   async function exportCopyTxtReport() {
     const btn = document.getElementById('export-copy-txt');
     if (!btn) return;
-    closeExportMenu();
     const prev = btn.textContent;
     btn.disabled = true;
     btn.textContent = 'Копируем…';
     try {
-      const res = await fetch(reportTxtUrl, { headers: { Accept: 'text/plain; charset=utf-8' } });
+      const res = await fetch(buildDayExportUrl(reportTxtBase), { headers: { Accept: 'text/plain; charset=utf-8' } });
       if (!res.ok) throw new Error('Не удалось получить отчёт');
       await copyTextToClipboard(await res.text());
       btn.textContent = 'Скопировано!';
+      setTimeout(() => closeModal(document.getElementById('modal-export-day')), 600);
     } catch (_) {
       alert('Не удалось скопировать отчёт в буфер обмена');
       btn.textContent = prev;
@@ -350,6 +431,74 @@
         btn.textContent = prev;
       }, 1800);
     }
+  }
+
+  async function exportCopyMdReport() {
+    const btn = document.getElementById('export-copy-md');
+    if (!btn) return;
+    const prev = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Копируем…';
+    try {
+      const res = await fetch(buildDayExportUrl(reportMdBase), { headers: { Accept: 'text/markdown; charset=utf-8' } });
+      if (!res.ok) throw new Error('Не удалось получить отчёт');
+      await copyTextToClipboard(await res.text());
+      btn.textContent = 'Скопировано!';
+      setTimeout(() => closeModal(document.getElementById('modal-export-day')), 600);
+    } catch (_) {
+      alert('Не удалось скопировать отчёт в буфер обмена');
+      btn.textContent = prev;
+    } finally {
+      btn.disabled = false;
+      setTimeout(() => {
+        btn.textContent = prev;
+      }, 1800);
+    }
+  }
+
+  async function downloadDayTextExport(btn, url, filename, accept) {
+    if (!btn) return;
+    const prev = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Готовим…';
+    try {
+      const res = await fetch(url, { headers: { Accept: accept } });
+      if (!res.ok) throw new Error('Не удалось получить отчёт');
+      const text = await res.text();
+      const blob = new Blob([text], { type: accept.includes('markdown') ? 'text/markdown;charset=utf-8' : 'text/plain;charset=utf-8' });
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+      closeModal(document.getElementById('modal-export-day'));
+    } catch (_) {
+      alert('Не удалось скачать отчёт');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = prev;
+    }
+  }
+
+  async function exportTxtReport() {
+    await downloadDayTextExport(
+      document.getElementById('export-txt'),
+      buildDayExportUrl(reportTxtBase),
+      'work_day_report.txt',
+      'text/plain; charset=utf-8'
+    );
+  }
+
+  async function exportMdReport() {
+    await downloadDayTextExport(
+      document.getElementById('export-md'),
+      buildDayExportUrl(reportMdBase),
+      'work_day_report.md',
+      'text/markdown; charset=utf-8'
+    );
   }
 
   function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
@@ -376,20 +525,20 @@
   async function exportPngReport() {
     const btn = document.getElementById('export-png');
     if (!btn) return;
-    closeExportMenu();
     btn.disabled = true;
-    btn.textContent = 'Готовим PNG...';
+    btn.textContent = 'Готовим PNG…';
     try {
-      const res = await fetch(reportDataUrl, { headers: { Accept: 'application/json' } });
+      const res = await fetch(buildDayExportUrl(reportDataBase), { headers: { Accept: 'application/json' } });
       if (!res.ok) throw new Error('Не удалось получить данные отчёта');
       const report = await res.json();
+      const opts = report.options || {};
 
       const width = 1100;
       const padding = 60;
       const rowHeight = 46;
-      const taskCount = (report.tasks || []).length;
-      const baseHeight = 280;
-      const height = Math.max(520, baseHeight + taskCount * rowHeight + 80);
+      const taskCount = opts.include_tasks === false ? 0 : (report.tasks || []).length;
+      const baseHeight = 320;
+      const height = Math.max(520, baseHeight + taskCount * rowHeight + 160);
 
       const canvas = document.createElement('canvas');
       canvas.width = width;
@@ -406,38 +555,64 @@
       ctx.fillStyle = '#8b93a7';
       ctx.font = '500 22px "Segoe UI", sans-serif';
       ctx.fillText('Отчёт по рабочему дню', padding, 120);
-      ctx.fillText(`Всего: ${report.summary.total_duration}`, padding, 154);
-      ctx.fillText(`Задач: ${report.summary.task_count} · Сессий: ${report.summary.session_count}`, padding, 184);
-
-      let y = 224;
-      if (report.work_day.note) {
-        ctx.fillStyle = '#d4d8e2';
-        ctx.font = '400 20px "Segoe UI", sans-serif';
-        y = drawWrappedText(ctx, report.work_day.note, padding, y, width - padding * 2, 30) + 10;
+      let y = 154;
+      if (opts.include_day_totals !== false) {
+        ctx.fillText(`Всего: ${report.summary.total_duration}`, padding, y);
+        y += 34;
+        ctx.fillText(`Задач: ${report.summary.task_count} · Сессий: ${report.summary.session_count}`, padding, y);
+        y += 40;
+      } else {
+        y = 160;
       }
 
-      ctx.fillStyle = '#2a3142';
-      ctx.fillRect(padding, y, width - padding * 2, 2);
-      y += 38;
-
-      ctx.fillStyle = '#8b93a7';
-      ctx.font = '600 18px "Segoe UI", sans-serif';
-      ctx.fillText('Задача', padding, y);
-      ctx.fillText('Время', width - padding - 240, y);
-      ctx.fillText('Сессии', width - padding - 120, y);
-      y += 24;
-      ctx.fillStyle = '#2a3142';
-      ctx.fillRect(padding, y, width - padding * 2, 1);
-      y += 32;
-
-      ctx.font = '400 20px "Segoe UI", sans-serif';
-      for (const task of (report.tasks || [])) {
-        ctx.fillStyle = '#e8eaef';
-        ctx.fillText(task.name, padding, y);
+      const showEmpty = opts.show_empty_fields !== false;
+      const sections = [
+        { on: opts.include_note !== false, label: 'Итоги', value: report.work_day.note },
+        { on: opts.include_next_steps !== false, label: 'Далее', value: report.work_day.next_steps },
+        { on: opts.include_questions !== false, label: 'Вопросы', value: report.work_day.questions },
+      ];
+      for (const section of sections) {
+        if (!section.on) continue;
+        const text = String(section.value || '').trim();
+        if (!text && !showEmpty) continue;
         ctx.fillStyle = '#d4d8e2';
-        ctx.fillText(task.duration, width - padding - 240, y);
-        ctx.fillText(String(task.session_count), width - padding - 120, y);
-        y += rowHeight;
+        ctx.font = '400 20px "Segoe UI", sans-serif';
+        y = drawWrappedText(ctx, `${section.label}: ${text || '-'}`, padding, y, width - padding * 2, 28) + 8;
+      }
+
+      if (opts.include_tasks !== false) {
+        ctx.fillStyle = '#2a3142';
+        ctx.fillRect(padding, y, width - padding * 2, 2);
+        y += 38;
+
+        ctx.fillStyle = '#8b93a7';
+        ctx.font = '600 18px "Segoe UI", sans-serif';
+        ctx.fillText('Задача', padding, y);
+        ctx.fillText('Время', width - padding - 240, y);
+        if (opts.include_session_counts !== false) {
+          ctx.fillText('Сессии', width - padding - 120, y);
+        }
+        y += 24;
+        ctx.fillStyle = '#2a3142';
+        ctx.fillRect(padding, y, width - padding * 2, 1);
+        y += 32;
+
+        ctx.font = '400 20px "Segoe UI", sans-serif';
+        const tasks = report.tasks || [];
+        if (!tasks.length && showEmpty) {
+          ctx.fillStyle = '#8b93a7';
+          ctx.fillText('—', padding, y);
+        }
+        for (const task of tasks) {
+          ctx.fillStyle = '#e8eaef';
+          ctx.fillText(task.name, padding, y);
+          ctx.fillStyle = '#d4d8e2';
+          ctx.fillText(task.duration, width - padding - 240, y);
+          if (opts.include_session_counts !== false) {
+            ctx.fillText(String(task.session_count), width - padding - 120, y);
+          }
+          y += rowHeight;
+        }
       }
 
       ctx.fillStyle = '#8b93a7';
@@ -447,23 +622,40 @@
 
       const filename = safeFileStem(report.work_day.title) + '.png';
       saveDataUrl(filename, canvas.toDataURL('image/png'));
+      closeModal(document.getElementById('modal-export-day'));
     } catch (err) {
       alert('Не удалось сохранить PNG-отчёт');
     } finally {
       btn.disabled = false;
-      btn.textContent = 'PNG';
-      closeExportMenu();
+      btn.textContent = 'Скачать PNG';
     }
   }
+
+  loadSavedDayExportOptions();
 
   const exportPngBtn = document.getElementById('export-png');
   if (exportPngBtn) {
     exportPngBtn.addEventListener('click', exportPngReport);
   }
 
+  const exportTxtBtn = document.getElementById('export-txt');
+  if (exportTxtBtn) {
+    exportTxtBtn.addEventListener('click', exportTxtReport);
+  }
+
+  const exportMdBtn = document.getElementById('export-md');
+  if (exportMdBtn) {
+    exportMdBtn.addEventListener('click', exportMdReport);
+  }
+
   const exportCopyTxtBtn = document.getElementById('export-copy-txt');
   if (exportCopyTxtBtn) {
     exportCopyTxtBtn.addEventListener('click', exportCopyTxtReport);
+  }
+
+  const exportCopyMdBtn = document.getElementById('export-copy-md');
+  if (exportCopyMdBtn) {
+    exportCopyMdBtn.addEventListener('click', exportCopyMdReport);
   }
 
   document.querySelectorAll('.js-note-bullet').forEach((btn) => {

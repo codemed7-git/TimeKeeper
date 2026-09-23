@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Нетворкинг — вход{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Нетворкинг</h1>
+    <p class="subtitle muted">Раздел защищён PIN-кодом</p>
+  </div>
+</header>
+<section class="card nw-unlock-card">
+  <form method="post" action="{{ url_for('networking_unlock') }}" class="stack-form">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label class="field">
+      <span class="field-label">PIN</span>
+      <input type="password" name="pin" class="input" required autofocus inputmode="numeric" autocomplete="off">
+    </label>
+    {% if error %}
+    <p class="nw-error">{{ error }}</p>
+    {% endif %}
+    <button type="submit" class="btn btn--primary">Открыть</button>
+  </form>
+</section>
+{% endblock %}

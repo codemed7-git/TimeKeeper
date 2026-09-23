@@ -11,23 +11,36 @@
   <button type="button" class="btn btn--primary" data-open-modal="modal-new-project">Новый проект</button>
 </header>
 
+<div class="todo-view-tabs">
+  <a href="{{ url_for('todo_home') }}" class="todo-view-tab{% if not show_archived %} is-active{% endif %}">Активные</a>
+  <a href="{{ url_for('todo_home', archived=1) }}" class="todo-view-tab{% if show_archived %} is-active{% endif %}">Архив{% if archived_count %} · {{ archived_count }}{% endif %}</a>
+</div>
+
 {% if projects %}
 <div class="todo-projects-grid">
   {% for p in projects %}
-  <article class="card todo-project-card">
-    <h2 class="card-title">
-      <a href="{{ url_for('todo_project_view', project_id=p.id) }}" class="inline-link">{{ p.title }}</a>
-    </h2>
-    {% if p.note %}
-    <p class="todo-project-card__note">{{ p.note }}</p>
-    {% endif %}
-    <p class="muted todo-project-card__meta">
-      {{ p.column_count }} кол. · {{ p.card_count }} задач · {{ fmt_created(p.created_at) }}
-    </p>
+  <article class="card todo-project-card{% if p.archived %} is-archived{% endif %}">
+    <a href="{{ url_for('todo_project_view', project_id=p.id) }}" class="todo-project-card__link" aria-label="Открыть проект «{{ p.title }}»"></a>
+    <div class="todo-project-card__body">
+      <h2 class="card-title todo-project-card__title">{{ p.title }}</h2>
+      {% if p.note %}
+      <p class="todo-project-card__note">{{ p.note }}</p>
+      {% endif %}
+    </div>
     <div class="todo-project-card__actions">
-      <a href="{{ url_for('todo_project_view', project_id=p.id) }}" class="btn btn--primary btn--sm">Открыть</a>
-      <form method="post" action="{{ url_for('todo_delete_project', project_id=p.id) }}" onsubmit="return confirm('Удалить проект «{{ p.title }}» и все задачи?');">
-        <button type="submit" class="btn btn--danger btn--sm">Удалить</button>
+      <form method="post" action="{{ url_for('todo_archive_project', project_id=p.id) }}" class="todo-project-card__action-form">
+        <button type="submit" class="todo-project-card__icon-btn" title="{{ 'Вернуть из архива' if p.archived else 'В архив' }}" aria-label="{{ 'Вернуть из архива' if p.archived else 'В архив' }}">
+          {% if p.archived %}
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 9l4.5 4.5H13.5v2h-3v-2H7.5L12 9zM5.12 5l.81-1h12l.94 1H5.12z"/></svg>
+          {% else %}
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5L7.5 13H10.5v-2h3v2h3L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z"/></svg>
+          {% endif %}
+        </button>
+      </form>
+      <form method="post" action="{{ url_for('todo_delete_project', project_id=p.id) }}" class="todo-project-card__action-form" onsubmit="return confirm('Удалить проект «{{ p.title }}» и все задачи?');">
+        <button type="submit" class="todo-project-card__icon-btn todo-project-card__icon-btn--danger" title="Удалить" aria-label="Удалить проект">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+        </button>
       </form>
     </div>
   </article>
@@ -35,7 +48,7 @@
 </div>
 {% else %}
 <section class="card">
-  <p class="muted" style="margin:0">Пока нет проектов. Создайте первый.</p>
+  <p class="muted" style="margin:0">{{ 'В архиве пока пусто.' if show_archived else 'Пока нет проектов. Создайте первый.' }}</p>
 </section>
 {% endif %}
 

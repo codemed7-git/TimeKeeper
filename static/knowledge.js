@@ -14,6 +14,7 @@
   let saveTimer = null;
   let dirty = false;
   let saving = false;
+  let mode = "edit";
 
   const els = {
     list: document.getElementById("kg-note-list"),
@@ -24,11 +25,63 @@
     editor: document.getElementById("kg-editor"),
     title: document.getElementById("kg-note-title"),
     body: document.getElementById("kg-note-body"),
+    preview: document.getElementById("kg-note-preview"),
+    toggleModeBtn: document.getElementById("kg-toggle-mode"),
     status: document.getElementById("kg-save-status"),
     outgoing: document.getElementById("kg-outgoing"),
     incoming: document.getElementById("kg-incoming"),
     showUnresolved: document.getElementById("kg-show-unresolved"),
+    linkModeBtn: document.getElementById("kg-link-mode"),
+    linkHint: document.getElementById("kg-link-hint"),
   };
+
+  function graphTheme() {
+    const styles = getComputedStyle(document.documentElement);
+    return {
+      text: styles.getPropertyValue("--text").trim() || "#e8eaef",
+      muted: styles.getPropertyValue("--muted").trim() || "#8b93a7",
+      accent: styles.getPropertyValue("--accent").trim() || "#5b8cff",
+      accentDim: styles.getPropertyValue("--accent-dim").trim() || "#3d5fb8",
+      border: styles.getPropertyValue("--border").trim() || "#2a3142",
+      danger: styles.getPropertyValue("--danger").trim() || "#e45858",
+    };
+  }
+
+  function escapeRegExp(s) {
+    return (s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function wikilinkPattern(title, flags) {
+    const esc = escapeRegExp((title || "").trim());
+    return new RegExp(`\\[\\[\\s*${esc}\\s*(#[^\\]|]*)?(\\|[^\\]]*)?\\s*\\]\\]`, flags || "i");
+  }
+
+  function hasWikilink(body, title) {
+    return wikilinkPattern(title).test(body || "");
+  }
+
+  function syncNoteCache(note) {
+    if (!note) return;
+    const idx = notes.findIndex((n) => n.id === note.id);
+    const entry = {
+      id: note.id,
+      title: note.title,
+      body: note.body,
+      created_at: note.created_at,
+      updated_at: note.updated_at,
+      out_count: (note.outgoing || []).length,
+      in_count: (note.incoming || []).length,
+    };
+    if (idx >= 0) notes[idx] = entry;
+    else notes.unshift(entry);
+  }
+
+  function withAlpha(color, alpha) {
+    const match = /^#([0-9a-f]{6})$/i.exec(color);
+    if (!match) return color;
+    const value = parseInt(match[1], 16);
+    return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`;
+  }
 
   function setStatus(text) {
     if (els.status) els.status.textContent = text || "";
@@ -110,20 +163,34 @@
         wrap.className = "kg-links__unresolved";
         const label = document.createElement("span");
         label.textContent = item.title;
+        const actions = document.createElement("span");
+        actions.className = "kg-links__unresolved-actions";
         const create = document.createElement("button");
         create.type = "button";
         create.className = "btn btn--ghost btn--xs";
         create.textContent = "Создать";
         create.addEventListener("click", () => createNote(item.title));
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "kg-links__remove";
+        remove.title = "Убрать ссылку";
+        remove.setAttribute("aria-label", "Убрать ссылку «" + item.title + "»");
+        remove.textContent = "✕";
+        remove.addEventListener("click", () =>
+          removeDirectLink({ resolved: true, note_id: selectedId }, { title: item.title })
+        );
+        actions.appendChild(create);
+        actions.appendChild(remove);
         wrap.appendChild(label);
-        wrap.appendChild(create);
+        wrap.appendChild(actions);
         li.appendChild(wrap);
       }
       listEl.appendChild(li);
     });
   }
 
-  function applyNoteToEditor(note) {
+  function applyNoteToEditor(note, opts) {
+    const preserveMode = !!(opts && opts.preserveMode);
     selectedId = note.id;
     els.editor.hidden = false;
     root.classList.add("has-editor");
@@ -135,6 +202,11 @@
     renderLinks(els.incoming, note.incoming || [], "Нет обратных ссылок");
     renderNoteList();
     sim.highlightNoteId = note.id;
+    if (preserveMode) {
+      if (mode === "read") renderPreview(els.body.value);
+    } else {
+      setEditorMode(note.body && note.body.trim() ? "read" : "edit");
+    }
   }
 
   async function openNote(id) {
@@ -144,17 +216,7 @@
     try {
       const note = await api(noteUrl(id, "note"));
       applyNoteToEditor(note);
-      const idx = notes.findIndex((n) => n.id === id);
-      if (idx >= 0) {
-        notes[idx] = {
-          ...notes[idx],
-          title: note.title,
-          body: note.body,
-          updated_at: note.updated_at,
-          out_count: (note.outgoing || []).length,
-          in_count: (note.incoming || []).length,
-        };
-      }
+      syncNoteCache(note);
       renderNoteList();
     } catch (_) {
       setStatus("Не удалось открыть");
@@ -181,15 +243,7 @@
       });
       if (data.graph) setGraph(data.graph);
       if (data.note) {
-        notes.unshift({
-          id: data.note.id,
-          title: data.note.title,
-          body: data.note.body,
-          created_at: data.note.created_at,
-          updated_at: data.note.updated_at,
-          out_count: (data.note.outgoing || []).length,
-          in_count: (data.note.incoming || []).length,
-        });
+        syncNoteCache(data.note);
         applyNoteToEditor(data.note);
         els.title.focus();
         els.title.select();
@@ -222,19 +276,8 @@
       dirty = false;
       if (data.graph) setGraph(data.graph);
       if (data.note) {
-        const idx = notes.findIndex((n) => n.id === data.note.id);
-        const entry = {
-          id: data.note.id,
-          title: data.note.title,
-          body: data.note.body,
-          created_at: data.note.created_at,
-          updated_at: data.note.updated_at,
-          out_count: (data.note.outgoing || []).length,
-          in_count: (data.note.incoming || []).length,
-        };
-        if (idx >= 0) notes[idx] = entry;
-        else notes.unshift(entry);
-        applyNoteToEditor(data.note);
+        syncNoteCache(data.note);
+        applyNoteToEditor(data.note, { preserveMode: true });
       }
       setStatus(silent ? "" : "Сохранено");
       renderNoteList();
@@ -280,6 +323,171 @@
     renderNoteList();
   }
 
+  /* ---------- Read mode (rendered preview without raw [[brackets]]) ---------- */
+
+  const WIKILINK_RE = /\[\[\s*([^\]|#]+?)\s*(?:#[^|\]]*)?(?:\|([^\]]+))?\s*\]\]/g;
+
+  function buildTitleLookup() {
+    const map = new Map();
+    notes.forEach((n) => map.set(n.title.toLowerCase().trim(), n));
+    return map;
+  }
+
+  function appendLineWithLinks(container, line, lookup) {
+    WIKILINK_RE.lastIndex = 0;
+    let lastIndex = 0;
+    let match;
+    while ((match = WIKILINK_RE.exec(line))) {
+      if (match.index > lastIndex) {
+        container.appendChild(document.createTextNode(line.slice(lastIndex, match.index)));
+      }
+      const rawTitle = match[1].trim();
+      const alias = (match[2] || "").trim();
+      const found = lookup.get(rawTitle.toLowerCase());
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "kg-wikilink" + (found ? "" : " kg-wikilink--unresolved");
+      chip.textContent = alias || rawTitle;
+      if (found) {
+        chip.title = rawTitle;
+        chip.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          openNote(found.id);
+        });
+      } else {
+        chip.title = "Создать «" + rawTitle + "»";
+        chip.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          createNote(rawTitle);
+        });
+      }
+      container.appendChild(chip);
+      lastIndex = WIKILINK_RE.lastIndex;
+    }
+    if (lastIndex < line.length) {
+      container.appendChild(document.createTextNode(line.slice(lastIndex)));
+    }
+  }
+
+  function renderPreview(body) {
+    els.preview.innerHTML = "";
+    const text = body || "";
+    if (!text.trim()) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = "Пусто. Нажмите, чтобы написать.";
+      els.preview.appendChild(empty);
+      return;
+    }
+    const lookup = buildTitleLookup();
+    text.split(/\n{2,}/).forEach((para) => {
+      const p = document.createElement("p");
+      const lines = para.split("\n");
+      lines.forEach((line, i) => {
+        appendLineWithLinks(p, line, lookup);
+        if (i < lines.length - 1) p.appendChild(document.createElement("br"));
+      });
+      els.preview.appendChild(p);
+    });
+  }
+
+  function setEditorMode(next) {
+    mode = next;
+    if (mode === "read") {
+      renderPreview(els.body.value);
+      els.body.hidden = true;
+      els.preview.hidden = false;
+      if (els.toggleModeBtn) els.toggleModeBtn.textContent = "Править";
+    } else {
+      els.preview.hidden = true;
+      els.body.hidden = false;
+      if (els.toggleModeBtn) els.toggleModeBtn.textContent = "Читать";
+    }
+  }
+
+  if (els.toggleModeBtn) {
+    els.toggleModeBtn.addEventListener("click", () => {
+      if (mode === "edit") {
+        if (dirty) saveNote(true);
+        setEditorMode("read");
+      } else {
+        setEditorMode("edit");
+        window.requestAnimationFrame(() => els.body.focus());
+      }
+    });
+  }
+
+  if (els.preview) {
+    els.preview.addEventListener("click", (ev) => {
+      if (ev.target.closest(".kg-wikilink")) return;
+      setEditorMode("edit");
+      window.requestAnimationFrame(() => els.body.focus());
+    });
+  }
+
+  /* ---------- Direct linking (drag point to point on the graph) ---------- */
+
+  async function createDirectLink(source, target) {
+    if (!source || !source.resolved || !source.note_id) {
+      setStatus("Сначала создайте заметку для этой точки");
+      return;
+    }
+    const targetTitle = (target && target.title || "").trim();
+    if (!targetTitle) return;
+    try {
+      const fresh = await api(noteUrl(source.note_id, "note"));
+      const body = fresh.body || "";
+      if (hasWikilink(body, targetTitle)) {
+        setStatus("Уже связано");
+        return;
+      }
+      const addition = `[[${targetTitle}]]`;
+      const newBody = body.trim() ? `${body}\n\n${addition}` : addition;
+      const data = await api(noteUrl(source.note_id, "update"), {
+        method: "POST",
+        body: JSON.stringify({ body: newBody }),
+      });
+      if (data.graph) setGraph(data.graph);
+      if (data.note) syncNoteCache(data.note);
+      if (selectedId === source.note_id && data.note) {
+        applyNoteToEditor(data.note, { preserveMode: true });
+      }
+      renderNoteList();
+      setStatus(`Связано с «${targetTitle}»`);
+    } catch (err) {
+      setStatus(err.message || "Не удалось связать");
+    }
+  }
+
+  async function removeDirectLink(source, target) {
+    if (!source || !source.resolved || !source.note_id) return;
+    const targetTitle = (target && target.title || "").trim();
+    if (!targetTitle) return;
+    try {
+      const fresh = await api(noteUrl(source.note_id, "note"));
+      const body = fresh.body || "";
+      const pattern = wikilinkPattern(targetTitle, "gi");
+      if (!pattern.test(body)) {
+        setStatus("Ссылка не найдена");
+        return;
+      }
+      const newBody = body.replace(wikilinkPattern(targetTitle, "gi"), "").replace(/\n{3,}/g, "\n\n").trim();
+      const data = await api(noteUrl(source.note_id, "update"), {
+        method: "POST",
+        body: JSON.stringify({ body: newBody }),
+      });
+      if (data.graph) setGraph(data.graph);
+      if (data.note) syncNoteCache(data.note);
+      if (selectedId === source.note_id && data.note) {
+        applyNoteToEditor(data.note, { preserveMode: true });
+      }
+      renderNoteList();
+      setStatus(`Связь с «${targetTitle}» убрана`);
+    } catch (err) {
+      setStatus(err.message || "Не удалось убрать связь");
+    }
+  }
+
   /* ---------- Force-directed graph ---------- */
   const sim = {
     nodes: [],
@@ -293,6 +501,10 @@
     lastX: 0,
     lastY: 0,
     hovered: null,
+    linkMode: false,
+    linkFrom: null,
+    linkPointer: { x: 0, y: 0 },
+    hoveredEdge: null,
   };
 
   function setGraph(next) {
@@ -455,9 +667,37 @@
     return best;
   }
 
+  function distToSegment(px, py, ax, ay, bx, by) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    let t = lenSq ? ((px - ax) * dx + (py - ay) * dy) / lenSq : 0;
+    t = Math.max(0, Math.min(1, t));
+    const cx = ax + t * dx;
+    const cy = ay + t * dy;
+    const ddx = px - cx;
+    const ddy = py - cy;
+    return Math.sqrt(ddx * ddx + ddy * ddy);
+  }
+
+  function findEdgeAt(sx, sy, size) {
+    const p = screenToWorld(sx, sy, size);
+    let best = null;
+    let bestDist = 8 / sim.transform.k;
+    for (const e of sim.edges) {
+      const d = distToSegment(p.x, p.y, e.source.x, e.source.y, e.target.x, e.target.y);
+      if (d < bestDist) {
+        best = e;
+        bestDist = d;
+      }
+    }
+    return best;
+  }
+
   function draw() {
     const canvas = els.canvas;
     const ctx = canvas.getContext("2d");
+    const colors = graphTheme();
     const size = resizeCanvas();
     const { w, h, dpr } = size;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -489,15 +729,32 @@
     const dimming = neighborIds.size > 0;
 
     sim.edges.forEach((e) => {
+      const removable = sim.linkMode && !sim.linkFrom && sim.hoveredEdge === e;
       const active =
-        !dimming || (neighborIds.has(e.source.id) && neighborIds.has(e.target.id));
+        removable || !dimming || (neighborIds.has(e.source.id) && neighborIds.has(e.target.id));
       ctx.beginPath();
       ctx.moveTo(e.source.x, e.source.y);
       ctx.lineTo(e.target.x, e.target.y);
-      ctx.strokeStyle = active ? "rgba(91, 140, 255, 0.45)" : "rgba(42, 49, 66, 0.35)";
-      ctx.lineWidth = (active ? 1.4 : 1) / sim.transform.k;
+      if (removable) {
+        ctx.strokeStyle = withAlpha(colors.danger, 0.9);
+        ctx.lineWidth = 2.2 / sim.transform.k;
+      } else {
+        ctx.strokeStyle = active ? withAlpha(colors.accent, 0.52) : withAlpha(colors.border, 0.58);
+        ctx.lineWidth = (active ? 1.4 : 1) / sim.transform.k;
+      }
       ctx.stroke();
     });
+
+    if (sim.linkMode && sim.linkFrom) {
+      ctx.beginPath();
+      ctx.moveTo(sim.linkFrom.x, sim.linkFrom.y);
+      ctx.lineTo(sim.linkPointer.x, sim.linkPointer.y);
+      ctx.strokeStyle = withAlpha(colors.accent, 0.85);
+      ctx.lineWidth = 1.8 / sim.transform.k;
+      ctx.setLineDash([5 / sim.transform.k, 4 / sim.transform.k]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
     sim.nodes.forEach((n) => {
       const selected = hlId && n.note_id === hlId;
@@ -507,22 +764,22 @@
       ctx.beginPath();
       ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
       if (!n.resolved) {
-        ctx.fillStyle = active ? "rgba(139, 147, 167, 0.35)" : "rgba(139, 147, 167, 0.12)";
+        ctx.fillStyle = withAlpha(colors.muted, active ? 0.35 : 0.12);
         ctx.fill();
-        ctx.strokeStyle = active ? "rgba(139, 147, 167, 0.9)" : "rgba(139, 147, 167, 0.3)";
+        ctx.strokeStyle = withAlpha(colors.muted, active ? 0.9 : 0.3);
         ctx.lineWidth = 1.2 / sim.transform.k;
         ctx.setLineDash([3 / sim.transform.k, 3 / sim.transform.k]);
         ctx.stroke();
         ctx.setLineDash([]);
       } else {
         ctx.fillStyle = selected
-          ? "#5b8cff"
+          ? colors.accent
           : active
-            ? "#3d5fb8"
-            : "rgba(61, 95, 184, 0.25)";
+            ? colors.accentDim
+            : withAlpha(colors.accentDim, 0.25);
         ctx.fill();
         if (selected || (hover && hover.id === n.id)) {
-          ctx.strokeStyle = "#e8eaef";
+          ctx.strokeStyle = colors.text;
           ctx.lineWidth = 1.5 / sim.transform.k;
           ctx.stroke();
         }
@@ -532,7 +789,7 @@
         sim.transform.k > 0.55 || selected || (hover && hover.id === n.id) || sim.nodes.length < 18;
       if (showLabel && active) {
         ctx.font = `${12 / sim.transform.k}px "Segoe UI", system-ui, sans-serif`;
-        ctx.fillStyle = n.resolved ? "rgba(232, 234, 239, 0.92)" : "rgba(139, 147, 167, 0.85)";
+        ctx.fillStyle = n.resolved ? withAlpha(colors.text, 0.94) : withAlpha(colors.muted, 0.9);
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         const label =
@@ -592,6 +849,26 @@
     const p = canvasPos(evt);
     const node = findNodeAt(p.x, p.y, size);
     els.canvas.setPointerCapture(evt.pointerId);
+    if (sim.linkMode) {
+      if (node) {
+        if (!node.resolved) {
+          setStatus("Сначала создайте заметку для этой точки");
+          return;
+        }
+        sim.linkFrom = node;
+        sim.linkPointer = screenToWorld(p.x, p.y, size);
+      } else {
+        const edge = findEdgeAt(p.x, p.y, size);
+        if (edge) {
+          removeDirectLink(edge.source, edge.target);
+        } else {
+          sim.panning = true;
+          sim.lastX = evt.clientX;
+          sim.lastY = evt.clientY;
+        }
+      }
+      return;
+    }
     if (node) {
       sim.dragNode = node;
       node.fx = node.x;
@@ -607,6 +884,23 @@
   els.canvas.addEventListener("pointermove", (evt) => {
     const size = { w: els.canvas.clientWidth, h: els.canvas.clientHeight };
     const p = canvasPos(evt);
+    if (sim.linkMode) {
+      if (sim.linkFrom) {
+        sim.linkPointer = screenToWorld(p.x, p.y, size);
+        sim.hovered = findNodeAt(p.x, p.y, size);
+        sim.hoveredEdge = null;
+      } else if (sim.panning) {
+        sim.transform.x += evt.clientX - sim.lastX;
+        sim.transform.y += evt.clientY - sim.lastY;
+        sim.lastX = evt.clientX;
+        sim.lastY = evt.clientY;
+      } else {
+        sim.hovered = findNodeAt(p.x, p.y, size);
+        sim.hoveredEdge = sim.hovered ? null : findEdgeAt(p.x, p.y, size);
+      }
+      els.canvas.style.cursor = sim.panning ? "grabbing" : "crosshair";
+      return;
+    }
     if (sim.dragNode) {
       const world = screenToWorld(p.x, p.y, size);
       sim.dragNode.fx = world.x;
@@ -624,6 +918,14 @@
   });
 
   function endPointer(evt) {
+    if (sim.linkMode && sim.linkFrom) {
+      const size = { w: els.canvas.clientWidth, h: els.canvas.clientHeight };
+      const p = canvasPos(evt);
+      const target = findNodeAt(p.x, p.y, size);
+      const source = sim.linkFrom;
+      sim.linkFrom = null;
+      if (target && target.id !== source.id) createDirectLink(source, target);
+    }
     if (sim.dragNode) {
       const node = sim.dragNode;
       node.fx = null;
@@ -640,6 +942,7 @@
   els.canvas.addEventListener("pointercancel", endPointer);
 
   els.canvas.addEventListener("click", (evt) => {
+    if (sim.linkMode) return;
     const size = { w: els.canvas.clientWidth, h: els.canvas.clientHeight };
     const p = canvasPos(evt);
     const node = findNodeAt(p.x, p.y, size);
@@ -652,10 +955,37 @@
   });
 
   els.canvas.addEventListener("dblclick", (evt) => {
+    if (sim.linkMode) return;
     const size = { w: els.canvas.clientWidth, h: els.canvas.clientHeight };
     const p = canvasPos(evt);
     const node = findNodeAt(p.x, p.y, size);
     if (!node) createNote("");
+  });
+
+  function setLinkMode(next) {
+    sim.linkMode = next;
+    sim.linkFrom = null;
+    sim.hoveredEdge = null;
+    if (els.linkModeBtn) {
+      els.linkModeBtn.classList.toggle("is-active", next);
+      els.linkModeBtn.setAttribute("aria-pressed", next ? "true" : "false");
+    }
+    if (els.linkHint) els.linkHint.hidden = !next;
+    els.canvas.style.cursor = next ? "crosshair" : "grab";
+    setStatus(next ? "Режим связи включён" : "");
+  }
+
+  if (els.linkModeBtn) {
+    els.linkModeBtn.addEventListener("click", () => setLinkMode(!sim.linkMode));
+  }
+
+  document.addEventListener("keydown", (evt) => {
+    if (evt.key !== "Escape") return;
+    if (sim.linkFrom) {
+      sim.linkFrom = null;
+      return;
+    }
+    if (sim.linkMode) setLinkMode(false);
   });
 
   document.getElementById("kg-new-note").addEventListener("click", () => createNote(""));
@@ -715,6 +1045,7 @@
   els.title.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
+      if (mode === "read") setEditorMode("edit");
       els.body.focus();
     }
   });

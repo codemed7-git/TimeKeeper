@@ -3,6 +3,12 @@
 {% block title %}Граф знаний{% endblock %}
 
 {% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Граф знаний</h1>
+    <p class="subtitle muted">Заметки и связи между ними — вики-ссылки и граф</p>
+  </div>
+</header>
 <div
   class="kg"
   id="knowledge-app"
@@ -17,17 +23,12 @@
   } | tojson }}'
 >
   <aside class="kg-sidebar">
-    <div class="kg-sidebar__head">
-      <h1 class="kg-sidebar__title">Граф знаний</h1>
-      <div class="kg-sidebar__actions">
-        <button type="button" class="btn btn--ghost btn--sm" id="kg-import-todo" title="Импорт проектов и задач из TO-DO">Из TO-DO</button>
-        <button type="button" class="btn btn--primary btn--sm" id="kg-new-note">Новая</button>
-      </div>
-    </div>
     <label class="kg-search">
       <span class="visually-hidden">Поиск</span>
       <input type="search" id="kg-search" class="input input--compact" placeholder="Поиск заметок…" autocomplete="off">
     </label>
+    <button type="button" class="btn btn--primary kg-new-note-btn" id="kg-new-note">＋ Новая заметка</button>
+    <button type="button" class="btn btn--ghost btn--sm kg-import-btn" id="kg-import-todo" title="Импорт проектов и задач из TO-DO">Импорт из TO-DO</button>
     <p class="kg-sidebar__hint muted">Связи через <code>[[название]]</code></p>
     <ul class="kg-note-list" id="kg-note-list"></ul>
   </aside>
@@ -36,6 +37,17 @@
     <div class="kg-graph-toolbar">
       <button type="button" class="btn btn--ghost btn--xs" id="kg-fit" title="Вписать">Вписать</button>
       <button type="button" class="btn btn--ghost btn--xs" id="kg-reheat" title="Перестроить">Перестроить</button>
+      <button
+        type="button"
+        class="btn btn--ghost btn--xs kg-link-mode-btn"
+        id="kg-link-mode"
+        aria-pressed="false"
+        title="Режим связи: перетащите одну точку на другую, чтобы связать их. Клик по линии — разорвать связь."
+      >
+        <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false"><path fill="currentColor" d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>
+        Связать
+      </button>
+      <span class="kg-link-hint muted" id="kg-link-hint" hidden>точку на точку — связать · клик по линии — разорвать · Esc — выйти</span>
       <label class="kg-toggle">
         <input type="checkbox" id="kg-show-unresolved" checked>
         <span>Несозданные</span>
@@ -44,7 +56,7 @@
     </div>
     <canvas id="kg-canvas" class="kg-canvas"></canvas>
     <p class="kg-graph-empty muted" id="kg-graph-empty" hidden>
-      Пока нет заметок. Создайте первую — и связывайте их через <code>[[вики-ссылки]]</code>.
+      Пока нет заметок. Создайте первую — и связывайте их через <code>[[вики-ссылки]]</code> или перетаскиванием на графе.
     </p>
   </section>
 
@@ -53,11 +65,13 @@
       <input type="text" id="kg-note-title" class="input kg-editor__title" placeholder="Название заметки" maxlength="200" autocomplete="off">
       <div class="kg-editor__actions">
         <span class="kg-editor__status muted" id="kg-save-status"></span>
+        <button type="button" class="btn btn--ghost btn--sm" id="kg-toggle-mode" title="Переключить чтение/редактирование">Читать</button>
         <button type="button" class="btn btn--ghost btn--sm" id="kg-close-editor" title="Закрыть">Закрыть</button>
         <button type="button" class="btn btn--danger btn--sm" id="kg-delete-note">Удалить</button>
       </div>
     </div>
     <textarea id="kg-note-body" class="input kg-editor__body" placeholder="Текст заметки. Связи: [[Другая заметка]]" spellcheck="true"></textarea>
+    <div id="kg-note-preview" class="kg-editor__preview" hidden></div>
     <div class="kg-editor__meta">
       <div class="kg-links-block">
         <h3 class="kg-links-block__title">Исходящие</h3>

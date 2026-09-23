@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+
+{% block title %}Трекер{% endblock %}
+
+{% block body %}
+<main
+  class="tracker"
+  id="tracker-root"
+  data-date="{{ selected_iso }}"
+  data-create-url="{{ url_for('tracker_create_item') }}"
+  data-update-url="{{ url_for('tracker_update_item', item_id=0) }}"
+  data-entry-url="{{ url_for('tracker_set_entry', item_id=0) }}"
+  data-start-url="{{ url_for('tracker_start_item', item_id=0) }}"
+  data-pause-url="{{ url_for('tracker_pause_item', item_id=0) }}"
+  data-reset-url="{{ url_for('tracker_reset_today', item_id=0) }}"
+  data-delete-url="{{ url_for('tracker_delete_item', item_id=0) }}"
+>
+  <header class="header">
+    <div>
+      <h1 class="title">Трекер</h1>
+      <p class="subtitle muted">Рутины и таймеры для регулярных дел: ритм, прогресс и серии — в одном месте</p>
+    </div>
+    <div class="tracker-header-right">
+      <div class="tracker-calendar" id="tracker-calendar">
+        <a class="tracker-date-arrow" href="{{ url_for('tracker_home', date=prev_date) }}" aria-label="Предыдущий день">←</a>
+        <button
+          type="button"
+          class="tracker-calendar-trigger"
+          id="tracker-calendar-trigger"
+          aria-haspopup="true"
+          aria-expanded="false"
+        >
+          <span class="tracker-calendar-trigger__caption">
+            {% if selected_iso == today_iso %}Сегодня{% else %}Выбранный день{% endif %}
+          </span>
+          <strong>{{ selected_label }}</strong>
+        </button>
+        <a class="tracker-date-arrow" href="{{ url_for('tracker_home', date=next_date) }}" aria-label="Следующий день">→</a>
+        {% if selected_iso != today_iso %}
+        <a class="btn btn--ghost btn--sm tracker-today-link" href="{{ url_for('tracker_home') }}">Сегодня</a>
+        {% endif %}
+
+        <div class="tracker-calendar-popup" id="tracker-calendar-popup" role="dialog" aria-label="Календарь" hidden>
+          <div class="tracker-calendar-popup__head">
+            <button type="button" class="tracker-calendar-popup__nav" data-cal-month="-1" aria-label="Предыдущий месяц">‹</button>
+            <strong id="tracker-calendar-month-label"></strong>
+            <button type="button" class="tracker-calendar-popup__nav" data-cal-month="1" aria-label="Следующий месяц">›</button>
+          </div>
+          <div class="tracker-calendar-popup__weekdays">
+            {% for day in weekday_names %}<span>{{ day }}</span>{% endfor %}
+          </div>
+          <div class="tracker-calendar-popup__days" id="tracker-calendar-days"></div>
+        </div>
+      </div>
+
+      <div class="tracker-mini-stats">
+        <article class="tracker-mini-stat tracker-mini-stat--accent">
+          <span class="tracker-mini-stat__label">Выполнено</span>
+          <strong class="tracker-mini-stat__value"><span data-summary-done>{{ dashboard.done }}</span><small>/ <span data-summary-total>{{ dashboard.due_count }}</span></small></strong>
+          <div class="tracker-progress tracker-mini-stat__bar" aria-hidden="true"><span data-summary-bar style="width: {{ dashboard.percent }}%"></span></div>
+        </article>
+        <article class="tracker-mini-stat">
+          <span class="tracker-mini-stat__label">Лучшая серия</span>
+          <strong class="tracker-mini-stat__value"><span aria-hidden="true">🔥</span> <span data-summary-streak>{{ dashboard.best_streak }}</span></strong>
+        </article>
+      </div>
+    </div>
+  </header>
+
+  <div class="tracker-top">
+    <div class="tracker-top__center">
+      <div class="tracker-center-row">
+        <div class="tracker-tabs" role="tablist" aria-label="Представление">
+          <button class="tracker-tab is-active" type="button" role="tab" aria-selected="true" data-tracker-tab="today">
+            На день <span class="tracker-tab__count">{{ dashboard.due_count }}</span>
+          </button>
+          <button class="tracker-tab" type="button" role="tab" aria-selected="false" data-tracker-tab="all">
+            Все задачи <span class="tracker-tab__count">{{ all_items|length }}</span>
+          </button>
+        </div>
+        <button type="button" class="btn btn--primary tracker-add" data-open-tracker-modal="create">
+          <span aria-hidden="true">＋</span> Новая задача
+        </button>
+      </div>
+      <div class="tracker-divider" aria-hidden="true"></div>
+
+      <section class="tracker-panel is-active" data-tracker-panel="today">
+        {% if dashboard.due_items %}
+        <div class="tracker-grid">
+          {% for item in dashboard.due_items %}
+      <article
+        class="tracker-card{% if item.complete %} is-complete{% endif %}{% if item.task_type == 'hourglass' %} tracker-card--hourglass{% endif %}{% if item.is_running %} is-running{% endif %}"
+        data-tracker-card="{{ item.id }}"
+        data-task-type="{{ item.task_type }}"
+        {% if item.task_type == 'hourglass' %}
+        data-budget-seconds="{{ item.budget_seconds }}"
+        data-remaining="{{ item.remaining_seconds }}"
+        data-running-since="{{ item.running_since or '' }}"
+        {% endif %}
+        style="--tracker-color: {{ item.color }}"
+      >
+        <div class="tracker-card__top">
+          <span class="tracker-card__icon" aria-hidden="true">{{ item.icon }}</span>
+          <div class="tracker-card__heading">
+            <h2>{{ item.title }}</h2>
+            <span class="tracker-card__schedule">{{ item.schedule_label }}</span>
+          </div>
+          <button class="tracker-card__edit" type="button" data-open-tracker-modal="edit" data-item-id="{{ item.id }}" aria-label="Настроить {{ item.title }}">•••</button>
+        </div>
+        {% if item.note %}<p class="tracker-card__note">{{ item.note }}</p>{% endif %}
+
+        <div class="tracker-history" aria-label="Последние семь дней">
+          {% for day in item.history %}
+          <div class="tracker-history__day{% if day.is_selected %} is-selected{% endif %}" title="{{ day.date }}{% if day.value %}: {{ day.value }} {{ item.unit }}{% endif %}">
+            <span class="tracker-history__weekday">{{ day.label }}</span>
+            <i class="{% if day.complete %}is-done{% elif day.due %}is-due{% else %}is-off{% endif %}"></i>
+            <span class="tracker-history__date">{{ day.day_num }}</span>
+          </div>
+          {% endfor %}
+        </div>
+
+        {% if item.task_type == 'hourglass' %}
+        <div class="tracker-hourglass">
+          <div class="tracker-hourglass__time" data-hourglass-remaining>{{ item.remaining_seconds // 3600 }}:{{ '%02d'|format((item.remaining_seconds % 3600) // 60) }}:{{ '%02d'|format(item.remaining_seconds % 60) }}</div>
+          <div class="tracker-progress tracker-hourglass__bar" aria-hidden="true"><span data-hourglass-bar style="width: {{ (item.value / (item.budget_seconds or 1) * 100) | round(1) }}%"></span></div>
+          <div class="tracker-hourglass__actions">
+            <button type="button" class="btn btn--ghost btn--sm tracker-hourglass__reset" data-hourglass-reset title="Сбросить сегодняшний расход">Сброс</button>
+            <button type="button" class="btn btn--primary tracker-hourglass__toggle" data-hourglass-toggle>{{ 'Пауза' if item.is_running else 'Старт' }}</button>
+            <button type="button" class="tracker-check tracker-hourglass__complete" data-hourglass-complete aria-label="Закрыть задачу целиком" aria-pressed="{{ 'true' if item.complete else 'false' }}" title="Закрыть разом">
+              <span aria-hidden="true">✓</span>
+            </button>
+          </div>
+        </div>
+        {% else %}
+        <div class="tracker-progress-display">
+          <div class="tracker-progress-display__value">
+            <strong data-entry-value>{{ item.value }}</strong>
+            <small>/ {{ item.target_value }} {{ item.unit }}</small>
+          </div>
+          <div class="tracker-progress tracker-progress-display__bar" aria-hidden="true"><span data-entry-bar style="width: {{ (item.value / (item.target_value or 1) * 100) | round(1) }}%"></span></div>
+        </div>
+        <div class="tracker-card__footer">
+          <div class="tracker-streak" title="Текущая серия"><span aria-hidden="true">🔥</span> <strong data-item-streak>{{ item.streak }}</strong></div>
+          <div class="tracker-counter" aria-label="Прогресс задачи">
+            <button type="button" data-entry-delta="-1" aria-label="Уменьшить">−</button>
+            <button type="button" data-entry-delta="1" aria-label="Увеличить">＋</button>
+          </div>
+          <button type="button" class="tracker-check" data-entry-complete="{{ item.target_value }}" aria-label="Отметить выполненной целиком" title="Закрыть разом" aria-pressed="{{ 'true' if item.complete else 'false' }}">
+            <span aria-hidden="true">✓</span>
+          </button>
+        </div>
+        {% if item.schedule_type == 'weekly' %}
+        <div class="tracker-week-progress">
+          <span>На этой неделе</span>
+          <strong><span data-week-progress>{{ item.progress_value }}</span> / {{ item.progress_target }}</strong>
+        </div>
+        {% endif %}
+        {% endif %}
+      </article>
+      {% endfor %}
+        </div>
+        {% else %}
+        <section class="tracker-empty">
+          <div class="tracker-empty__icon" aria-hidden="true">✓</div>
+          <h2>На этот день ничего не запланировано</h2>
+          <p>Можно отдохнуть или добавить новую задачу с удобным расписанием.</p>
+          <button type="button" class="btn btn--primary" data-open-tracker-modal="create">Добавить задачу</button>
+        </section>
+        {% endif %}
+      </section>
+
+      <section class="tracker-panel" data-tracker-panel="all" hidden>
+    {% if all_items %}
+    <div class="tracker-manage-list">
+      {% for item in all_items %}
+      <article class="tracker-manage-item{% if item.archived %} is-archived{% endif %}" style="--tracker-color: {{ item.color }}">
+        <span class="tracker-manage-item__icon" aria-hidden="true">{{ item.icon }}</span>
+        <div class="tracker-manage-item__body">
+          <div class="tracker-manage-item__title">
+            <strong>{{ item.title }}</strong>
+            {% if item.archived %}<span class="tracker-badge">В архиве</span>{% endif %}
+          </div>
+          {% if item.task_type == 'hourglass' %}
+          <span>{{ item.schedule_label }} · бюджет {{ item.budget_seconds // 3600 }} ч {{ '%02d'|format((item.budget_seconds % 3600) // 60) }} мин / день</span>
+          {% else %}
+          <span>{{ item.schedule_label }} · цель {{ item.target_value }} {{ item.unit }}</span>
+          {% endif %}
+        </div>
+        <div class="tracker-manage-item__actions">
+          <button type="button" class="btn btn--ghost btn--sm" data-open-tracker-modal="edit" data-item-id="{{ item.id }}">Настроить</button>
+          <form method="post" action="{{ url_for('tracker_archive_item', item_id=item.id) }}">
+            <button type="submit" class="btn btn--ghost btn--sm">{{ 'Вернуть' if item.archived else 'В архив' }}</button>
+          </form>
+          <form method="post" action="{{ url_for('tracker_delete_item', item_id=item.id) }}" onsubmit="return confirm('Удалить задачу «{{ item.title }}» вместе со всей историей?');">
+            <button type="submit" class="btn btn--danger-text btn--sm">Удалить</button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <section class="tracker-empty">
+      <h2>Трекер пока пуст</h2>
+      <p>Добавьте первую рутину или разовую задачу.</p>
+    </section>
+    {% endif %}
+  </section>
+    </div>
+  </div>
+</main>
+
+<div class="modal tracker-modal" id="tracker-item-modal" hidden>
+  <div class="modal__backdrop" data-close-tracker-modal></div>
+  <div class="modal__dialog tracker-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="tracker-modal-title">
+    <button type="button" class="modal__close" data-close-tracker-modal aria-label="Закрыть">&times;</button>
+    <div class="tracker-modal__head">
+      <span class="tracker-modal__mark" aria-hidden="true">✦</span>
+      <div>
+        <h2 class="modal__title" id="tracker-modal-title">Новая задача</h2>
+        <p class="muted">Настройте цель и ритм под себя.</p>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('tracker_create_item') }}" id="tracker-item-form" class="stack-form">
+      <input type="hidden" name="view_date" value="{{ selected_iso }}">
+      <div class="tracker-form-title">
+        <label class="field tracker-form-icon">
+          <span class="field-label">Значок</span>
+          <input class="input" name="icon" value="✓" maxlength="8" aria-label="Значок">
+        </label>
+        <label class="field tracker-form-name">
+          <span class="field-label">Название</span>
+          <input class="input" name="title" required maxlength="200" placeholder="Например, читать 30 минут">
+        </label>
+        <label class="field tracker-form-color">
+          <span class="field-label">Цвет</span>
+          <input type="color" name="color" value="#5b8cff" aria-label="Цвет">
+        </label>
+      </div>
+      <label class="field">
+        <span class="field-label">Заметка</span>
+        <textarea class="input" name="note" rows="2" maxlength="2000" placeholder="Зачем это важно или что именно делать"></textarea>
+      </label>
+
+      <fieldset class="tracker-schedule">
+        <legend class="field-label">Тип задачи</legend>
+        <div class="tracker-schedule-types tracker-type-types">
+          <label><input type="radio" name="task_type" value="routine" checked><span>Рутина</span></label>
+          <label><input type="radio" name="task_type" value="hourglass"><span>Песочные часы</span></label>
+        </div>
+        <p class="muted tracker-type-hint" data-type-hint="routine">Отмечается выполненной по расписанию — счётчик или галочка.</p>
+        <p class="muted tracker-type-hint" data-type-hint="hourglass" hidden>Выделяете время в день, запускаете таймер и тратите его. Активна только одна такая задача — запуск другой ставит эту на паузу.</p>
+      </fieldset>
+
+      <fieldset class="tracker-schedule">
+        <legend class="field-label">Расписание</legend>
+        <div class="tracker-schedule-types">
+          <label><input type="radio" name="schedule_type" value="daily" checked><span>Каждый день</span></label>
+          <label><input type="radio" name="schedule_type" value="weekdays"><span>Дни недели</span></label>
+          <label><input type="radio" name="schedule_type" value="weekly"><span>Цель на неделю</span></label>
+          <label><input type="radio" name="schedule_type" value="interval"><span>Интервал</span></label>
+          <label><input type="radio" name="schedule_type" value="once"><span>Разово</span></label>
+        </div>
+      </fieldset>
+
+      <div class="tracker-conditional" data-schedule-fields="weekdays" hidden>
+        <span class="field-label">В какие дни</span>
+        <div class="tracker-weekdays">
+          {% for day in weekday_names %}
+          <label><input type="checkbox" name="weekdays" value="{{ loop.index0 }}" checked><span>{{ day }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+      <label class="field tracker-conditional" data-schedule-fields="weekly" hidden>
+        <span class="field-label">Сколько выполнений за неделю</span>
+        <input class="input" type="number" name="weekly_target" value="3" min="1" max="7">
+      </label>
+      <label class="field tracker-conditional" data-schedule-fields="interval" hidden>
+        <span class="field-label">Повторять каждые N дней</span>
+        <input class="input" type="number" name="interval_days" value="2" min="1" max="365">
+      </label>
+      <label class="field tracker-conditional" data-schedule-fields="once" hidden>
+        <span class="field-label">Дата выполнения</span>
+        <input class="input" type="date" name="due_date" value="{{ selected_iso }}">
+      </label>
+
+      <div class="tracker-form-grid" data-type-fields="routine">
+        <label class="field">
+          <span class="field-label">Цель за одно выполнение</span>
+          <input class="input" type="number" name="target_value" value="1" min="1" max="999999">
+        </label>
+        <label class="field">
+          <span class="field-label">Единица</span>
+          <input class="input" name="unit" value="раз" maxlength="32" placeholder="раз, минут, страниц">
+        </label>
+        <label class="field" data-start-date-field>
+          <span class="field-label">Начать с</span>
+          <input class="input" type="date" name="start_date" value="{{ today_iso }}">
+        </label>
+      </div>
+      <div class="tracker-form-grid" data-type-fields="hourglass" hidden>
+        <label class="field">
+          <span class="field-label">Бюджет в день — часы</span>
+          <input class="input" type="number" name="budget_hours" value="1" min="0" max="23">
+        </label>
+        <label class="field">
+          <span class="field-label">Минуты</span>
+          <input class="input" type="number" name="budget_minutes" value="0" min="0" max="59">
+        </label>
+        <label class="field" data-start-date-field>
+          <span class="field-label">Начать с</span>
+          <input class="input" type="date" name="start_date" value="{{ today_iso }}">
+        </label>
+      </div>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--danger-text" id="tracker-delete-btn" hidden>Удалить</button>
+        <button type="button" class="btn btn--ghost" data-close-tracker-modal>Отмена</button>
+        <button type="submit" class="btn btn--primary" id="tracker-submit">Создать</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="application/json" id="tracker-items-data">{{ all_items|tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='tracker.js') }}"></script>
+{% endblock %}

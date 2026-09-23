@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+{% block title %}{{ c.display_name }} — контакт{% endblock %}
+{% block body %}
+<header class="header">
+  <div class="nw-contact-head">
+    {% if c.photo_path %}
+    <img class="nw-avatar" src="{{ url_for('static', filename=c.photo_path) }}" alt="">
+    {% endif %}
+    <div>
+      <h1 class="title">{{ c.display_name }}</h1>
+      <p class="subtitle muted">{{ c.circle_label }} · {{ c.list_label }} · {{ c.stage_label }} · опоры {{ c.legs }}/3</p>
+    </div>
+  </div>
+  <div class="nw-header-actions">
+    <a class="btn btn--ghost btn--sm" href="{{ url_for('networking_export_contact_md', contact_id=c.id) }}">Экспорт .md</a>
+    <form method="post" action="{{ url_for('networking_contact_archive', contact_id=c.id) }}" class="inline-form">
+      <button class="btn btn--ghost btn--sm" type="submit">{% if c.archived_at %}Вернуть из архива{% else %}В архив{% endif %}</button>
+    </form>
+    <form method="post" action="{{ url_for('networking_contact_delete', contact_id=c.id) }}" class="inline-form" onsubmit="return confirm('Удалить контакт безвозвратно?');">
+      <button class="btn btn--danger btn--sm" type="submit">Удалить</button>
+    </form>
+  </div>
+</header>
+
+<nav class="nw-toc">
+  <a href="#sec-overview">Обзор</a>
+  <a href="#sec-dossier">Досье</a>
+  <a href="#sec-ois">ОИС</a>
+  <a href="#sec-talk">Типаж</a>
+  <a href="#sec-history">История</a>
+  <a href="#sec-dyn">Динамика</a>
+  <a href="#sec-dates">Даты</a>
+  <a href="#sec-notes">Заметки</a>
+</nav>
+
+<form method="post" action="{{ url_for('networking_contact_update', contact_id=c.id) }}" class="nw-contact-form" id="contact-form">
+  <section class="card" id="sec-overview">
+    <h2 class="card-title">Обзор</h2>
+    <div class="nw-grid-2">
+      <label class="field"><span class="field-label">Отображаемое имя</span><input class="input" name="display_name" value="{{ c.display_name }}" required></label>
+      <label class="field"><span class="field-label">Прозвище</span><input class="input" name="nickname" value="{{ c.nickname }}"></label>
+      <label class="field"><span class="field-label">Имя</span><input class="input" name="first_name" value="{{ c.first_name }}"></label>
+      <label class="field"><span class="field-label">Фамилия</span><input class="input" name="last_name" value="{{ c.last_name }}"></label>
+      <label class="field"><span class="field-label">Круг</span>
+        <select name="circle" class="input">{% for k,v in nw_circles.items() %}<option value="{{ k }}"{% if c.circle==k %} selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+      </label>
+      <label class="field"><span class="field-label">Список</span>
+        <select name="priority_list" class="input">{% for k,v in nw_lists.items() %}<option value="{{ k }}"{% if c.priority_list==k %} selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+        <span class="muted">{{ list_hints.get(c.priority_list, '') }}</span>
+      </label>
+      <label class="field"><span class="field-label">Этап</span>
+        <select name="stage" class="input">{% for k,v in nw_stages.items() %}<option value="{{ k }}"{% if c.stage==k %} selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+      </label>
+      <label class="field"><span class="field-label">Важность (1–5)</span><input class="input" type="number" min="1" max="5" name="importance" value="{{ c.importance }}"></label>
+      <label class="field"><span class="field-label">Сектор карты</span>
+        <select name="sector_id" class="input"><option value="">Прочее</option>{% for s in sectors %}<option value="{{ s.id }}"{% if c.sector_id==s.id %} selected{% endif %}>{{ s.name }}</option>{% endfor %}</select>
+      </label>
+      <label class="field"><span class="field-label">Каденция, дней (пусто = по списку)</span><input class="input" type="number" min="1" name="cadence_days" value="{{ c.cadence_days or '' }}"></label>
+      <label class="field"><span class="field-label">Инициатива (−3…3)</span><input class="input" type="number" min="-3" max="3" name="initiative_balance" value="{{ c.initiative_balance }}"></label>
+      <label class="field"><span class="field-label">Представил</span>
+        <select name="introduced_by_id" class="input"><option value="">—</option>{% for o in others %}<option value="{{ o.id }}"{% if c.introduced_by_id==o.id %} selected{% endif %}>{{ o.display_name }}</option>{% endfor %}</select>
+      </label>
+    </div>
+    <p class="field-label">Роли</p>
+    <div class="nw-checks">
+      {% for k,v in nw_roles.items() %}
+      <label class="nw-check"><input type="checkbox" name="roles" value="{{ k }}"{% if k in c.roles_list %} checked{% endif %}> {{ v }}</label>
+      {% endfor %}
+    </div>
+    <p class="field-label">Опоры отношений</p>
+    <div class="nw-checks">
+      <label class="nw-check"><input type="checkbox" name="leg_interests" value="1"{% if c.leg_interests %} checked{% endif %}> Общие интересы</label>
+      <label class="nw-check"><input type="checkbox" name="leg_empathy" value="1"{% if c.leg_empathy %} checked{% endif %}> Эмоциональное сопереживание</label>
+      <label class="nw-check"><input type="checkbox" name="leg_circle" value="1"{% if c.leg_circle %} checked{% endif %}> Общий круг общения</label>
+    </div>
+    <p class="field-label">Группы интересов</p>
+    <div class="nw-checks">
+      {% for g in groups %}
+      <label class="nw-check"><input type="checkbox" name="group_ids" value="{{ g.id }}"{% if g.id in c.group_ids %} checked{% endif %}> <span class="nw-dot" style="background:{{ g.color }}"></span> {{ g.name }}</label>
+      {% endfor %}
+    </div>
+    <label class="field"><span class="field-label">Теги (через запятую)</span><input class="input" name="tags" value="{{ c.tags }}"></label>
+    <div class="nw-checks">
+      <label class="nw-check"><input type="checkbox" name="is_key" value="1"{% if c.is_key %} checked{% endif %}> Ключевой контакт</label>
+      <label class="nw-check"><input type="checkbox" name="is_confidential" value="1"{% if c.is_confidential %} checked{% endif %}> Конфиденциальная карточка</label>
+    </div>
+    <p>Пора связаться: <strong>{{ c.next_contact_due or '—' }}</strong> · последнее касание: {{ c.last_contact_at or '—' }}</p>
+    <button class="btn btn--primary" type="submit">Сохранить</button>
+  </section>
+
+  <section class="card" id="sec-dossier">
+    <h2 class="card-title">Досье</h2>
+    {% for title, fields in dossier_groups %}
+    <h3 class="nw-subh">{{ title }}</h3>
+    <div class="nw-grid-2">
+      {% for key, label in fields %}
+      <label class="field"><span class="field-label">{{ label }}</span><textarea class="input" name="{{ key }}" rows="2">{{ c[key] }}</textarea></label>
+      {% endfor %}
+    </div>
+    {% endfor %}
+    <label class="field"><span class="field-label">День рождения (ГГГГ-ММ-ДД или ММ-ДД)</span><input class="input" name="birth_date" value="{{ c.birth_date }}"></label>
+  </section>
+
+  <section class="card" id="sec-ois">
+    <h2 class="card-title">ОИС — сортировка нового контакта</h2>
+    <p class="muted">Опасен? Интересен? Сложен? — шкала 0–3. Это фильтр личной безопасности, не ярлык.</p>
+    <div class="nw-grid-3">
+      <label class="field">Опасен? <input class="input" type="range" min="0" max="3" name="triage_danger" value="{{ c.triage_danger }}"></label>
+      <label class="field">Интересен? <input class="input" type="range" min="0" max="3" name="triage_interest" value="{{ c.triage_interest }}"></label>
+      <label class="field">Сложен? <input class="input" type="range" min="0" max="3" name="triage_complexity" value="{{ c.triage_complexity }}"></label>
+    </div>
+    <label class="field">Решение
+      <select name="triage_decision" class="input">
+        {% for k,v in nw_triage.items() %}<option value="{{ k }}"{% if c.triage_decision==k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select>
+    </label>
+    <p class="muted">Работать — вкладываться. Заморозить — на периферии, задача вернуться позже. Отпустить — можно архивировать.</p>
+  </section>
+
+  <section class="card" id="sec-talk">
+    <h2 class="card-title">Типаж и подход</h2>
+    <label class="field">Модель раскрытия
+      <select name="openness_model" class="input" id="openness-model">
+        {% for k,v in nw_openness.items() %}<option value="{{ k }}"{% if c.openness_model==k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select>
+    </label>
+    <p class="muted" id="openness-hint">{{ openness_hints.get(c.openness_model, '') }}</p>
+    <label class="field">Типаж общения
+      <select name="talk_type" class="input" id="talk-type">
+        {% for k,v in nw_talk.items() %}<option value="{{ k }}"{% if c.talk_type==k %} selected{% endif %}>{{ v }}</option>{% endfor %}
+      </select>
+    </label>
+    <p class="muted" id="talk-hint">{{ talk_hints.get(c.talk_type, '') }}</p>
+  </section>
+
+  <section class="card" id="sec-notes">
+    <h2 class="card-title">Заметки</h2>
+    <label class="field"><span class="field-label">Обычные</span><textarea class="input" name="notes" rows="4">{{ c.notes }}</textarea></label>
+    <label class="field"><span class="field-label">Личные (всегда конфиденциальные)</span>
+      {% if nw_mask %}
+      <div class="nw-secret-wrap" data-secret="{{ c.private_notes|e }}"><span class="nw-secret">••••••</span> <button type="button" class="btn btn--ghost btn--xs js-nw-reveal">Показать</button></div>
+      <textarea class="input" name="private_notes" rows="3" hidden>{{ c.private_notes }}</textarea>
+      {% else %}
+      <textarea class="input" name="private_notes" rows="3">{{ c.private_notes }}</textarea>
+      {% endif %}
+    </label>
+    <button class="btn btn--primary" type="submit">Сохранить карточку</button>
+  </section>
+</form>
+
+<section class="card">
+  <h2 class="card-title">Произвольные поля</h2>
+  {% for f in custom_fields %}
+  <form method="post" action="{{ url_for('networking_contact_field_update', contact_id=c.id, fid=f.id) }}" class="row-form">
+    <input class="input" name="label" value="{{ f.label }}">
+    <input class="input" name="value" value="{{ f.value }}">
+    <label class="nw-check"><input type="checkbox" name="is_confidential" value="1"{% if f.is_confidential %} checked{% endif %}> конф.</label>
+    <button class="btn btn--sm btn--primary" type="submit">Ок</button>
+    <button class="btn btn--sm btn--danger" type="submit" name="delete" value="1">Удалить</button>
+  </form>
+  {% endfor %}
+  <form method="post" action="{{ url_for('networking_contact_field_add', contact_id=c.id) }}" class="row-form">
+    <input class="input" name="label" placeholder="Название поля" required>
+    <input class="input" name="value" placeholder="Значение">
+    <label class="nw-check"><input type="checkbox" name="is_confidential" value="1"> конф.</label>
+    <button class="btn btn--sm btn--primary" type="submit">Добавить</button>
+  </form>
+</section>
+
+<section class="card" id="sec-history">
+  <h2 class="card-title">История</h2>
+  <form method="post" action="{{ url_for('networking_interaction_add', contact_id=c.id) }}" class="row-form">
+    <select name="channel" class="input">{% for k,v in nw_channels.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+    <select name="direction" class="input">
+      <option value="out">Исходящее</option>
+      <option value="in">Входящее</option>
+      <option value="mutual">Взаимное</option>
+    </select>
+    <input type="datetime-local" name="occurred_at" class="input">
+    <input class="input input--grow" name="summary" placeholder="Кратко">
+    <label class="nw-check"><input type="checkbox" name="is_confidential" value="1"> конф.</label>
+    <button class="btn btn--primary" type="submit">Касание</button>
+  </form>
+  <ul class="nw-list">
+    {% for i in interactions %}
+    <li>{{ i.occurred_at }} · {{ nw_channels.get(i.channel, i.channel) }} · {{ i.summary }}</li>
+    {% else %}
+    <li class="muted">Касаний пока нет.</li>
+    {% endfor %}
+  </ul>
+  <h3 class="nw-subh">Встречи</h3>
+  <ul class="nw-list">
+    {% for m in meetings %}
+    <li><a class="inline-link" href="{{ url_for('networking_meeting', meeting_id=m.id) }}">{{ m.title }}</a> · {{ m.status }} · {{ m.planned_at or '' }}</li>
+    {% else %}
+    <li class="muted">Встреч нет.</li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="card" id="sec-dyn">
+  <h2 class="card-title">Динамика отношений</h2>
+  <div class="nw-sparks" data-scores='{{ scores|tojson }}'>
+    {% for key, label in nw_score_factors.items() %}
+    <div class="nw-spark"><span>{{ label }}</span><svg class="nw-spark__svg" data-key="{{ key }}" viewBox="0 0 120 32"></svg></div>
+    {% endfor %}
+  </div>
+  <table class="nw-table">
+    <thead><tr><th>Дата</th><th>Приверженность</th><th>Инициатива</th><th>Эмоции</th><th>Открытость</th></tr></thead>
+    <tbody>
+      {% for s in scores %}
+      <tr><td>{{ s.taken_at }}</td><td>{{ s.commitment }}</td><td>{{ s.initiative }}</td><td>{{ s.emotional }}</td><td>{{ s.openness }}</td></tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">Срезов нет.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <form method="post" action="{{ url_for('networking_score_add', contact_id=c.id) }}" class="row-form">
+    {% for key, label in nw_score_factors.items() %}
+    <label class="field">{{ label }}<input class="input" type="number" min="0" max="3" name="{{ key }}" value="0"></label>
+    {% endfor %}
+    <button class="btn btn--primary" type="submit">Добавить срез</button>
+  </form>
+</section>
+
+<section class="card" id="sec-dates">
+  <h2 class="card-title">Даты</h2>
+  <ul class="nw-list">
+    {% for d in dates %}
+    <li class="nw-list__row">
+      <span>{{ d.title or nw_date_kinds.get(d.kind, d.kind) }} — {{ '%02d'|format(d.day) }}.{{ '%02d'|format(d.month) }}{% if d.year %} {{ d.year }}{% endif %} · упреждение {{ d.lead_days }}</span>
+      <form method="post" action="{{ url_for('networking_date_update', date_id=d.id) }}" class="inline-form" onsubmit="return confirm('Удалить дату?');">
+        <button class="btn btn--sm btn--ghost" name="delete" value="1">Удалить</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="{{ url_for('networking_contact_date_add', contact_id=c.id) }}" class="row-form">
+    <select name="kind" class="input">{% for k,v in nw_date_kinds.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+    <input class="input" name="title" placeholder="Название">
+    <input class="input" type="number" min="1" max="12" name="month" placeholder="мес" required>
+    <input class="input" type="number" min="1" max="31" name="day" placeholder="день" required>
+    <input class="input" name="lead_days" placeholder="14,3,0">
+    <input class="input input--grow" name="greeting_note" placeholder="Заготовка поздравления">
+    <button class="btn btn--primary" type="submit">Добавить дату</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2 class="card-title">Фото</h2>
+  <form method="post" action="{{ url_for('networking_contact_photo', contact_id=c.id) }}" enctype="multipart/form-data" class="row-form">
+    <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="input">
+    <button class="btn btn--primary" type="submit">Загрузить</button>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  window.NW_HINTS = { talk: {{ talk_hints|tojson }}, openness: {{ openness_hints|tojson }} };
+</script>
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ m.title }} — встреча{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">{{ m.title }}</h1>
+    <p class="subtitle"><a class="inline-link" href="{{ url_for('networking_contact', contact_id=m.contact_id) }}">{{ m.display_name }}</a>
+      <span class="muted"> · {{ m.status }}{% if m.planned_at %} · {{ m.planned_at }}{% endif %}</span></p>
+  </div>
+  <div class="nw-header-actions">
+    {% if m.status == 'planned' %}
+    <form method="post" action="{{ url_for('networking_meeting_done', meeting_id=m.id) }}" class="inline-form">
+      <button class="btn btn--primary" type="submit">Отметить проведённой</button>
+    </form>
+    <form method="post" action="{{ url_for('networking_meeting_cancel', meeting_id=m.id) }}" class="inline-form">
+      <button class="btn btn--ghost" type="submit">Отменить</button>
+    </form>
+    {% endif %}
+  </div>
+</header>
+
+<form method="post" action="{{ url_for('networking_meeting_update', meeting_id=m.id) }}" class="stack-form">
+  <section class="card">
+    <h2 class="card-title">Подготовка</h2>
+    <p class="muted">Просите о небольшом, благодарите заметно щедрее.</p>
+    <div class="nw-grid-2">
+      <label class="field">Название <input class="input" name="title" value="{{ m.title }}"></label>
+      <label class="field">Когда <input class="input" name="planned_at" value="{{ m.planned_at or '' }}"></label>
+      <label class="field">Место <input class="input" name="place" value="{{ m.place }}"></label>
+    </div>
+    <label class="field">Как продвину отношения <textarea class="input" name="prep_goal_relationship" rows="2">{{ m.prep_goal_relationship }}</textarea></label>
+    <label class="field">Что хочу понять о человеке <textarea class="input" name="prep_goal_understanding" rows="2">{{ m.prep_goal_understanding }}</textarea></label>
+    <label class="field">Что предложу <textarea class="input" name="prep_offer" rows="2">{{ m.prep_offer }}</textarea></label>
+    <label class="field">О чём попрошу <textarea class="input" name="prep_ask" rows="2">{{ m.prep_ask }}</textarea></label>
+    <label class="field">Темы и открытые вопросы <textarea class="input" name="prep_topics" rows="2">{{ m.prep_topics }}</textarea></label>
+    <label class="field">Зацепка на следующую встречу <textarea class="input" name="prep_hook" rows="2">{{ m.prep_hook }}</textarea></label>
+    <p class="muted">Опоры контакта: интересы {{ m.leg_interests }}, сопереживание {{ m.leg_empathy }}, общий круг {{ m.leg_circle }}.</p>
+    {% if offers %}
+    <p class="muted">Что могу предложить:
+      {% for o in offers %}{{ o.title }}{% if not loop.last %}, {% endif %}{% endfor %}
+    </p>
+    {% endif %}
+  </section>
+  <section class="card">
+    <h2 class="card-title">Разбор</h2>
+    <label class="field">Заметки <textarea class="input" name="retro_notes" rows="3">{{ m.retro_notes }}</textarea></label>
+    <label class="field">Следующие шаги <textarea class="input" name="retro_next_steps" rows="2">{{ m.retro_next_steps }}</textarea></label>
+    <label class="field">Новые факты в досье <textarea class="input" name="retro_new_facts" rows="2">{{ m.retro_new_facts }}</textarea></label>
+    <label class="nw-check"><input type="checkbox" name="is_confidential" value="1"{% if m.is_confidential %} checked{% endif %}> Конфиденциально</label>
+    <h3 class="nw-subh">Срез динамики (0–3)</h3>
+    <label class="nw-check"><input type="checkbox" name="add_score" value="1"> Записать срез при сохранении</label>
+    <div class="nw-grid-2">
+      {% for key, label in nw_score_factors.items() %}
+      <label class="field">{{ label }}<input class="input" type="number" min="0" max="3" name="{{ key }}" value="0"></label>
+      {% endfor %}
+    </div>
+    <button class="btn btn--primary" type="submit">Сохранить</button>
+  </section>
+</form>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+{% endblock %}

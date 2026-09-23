@@ -1,0 +1,16 @@
+<nav class="app-nav app-nav--sub" aria-label="Нетворкинг">
+  <a href="{{ url_for('networking_home') }}" class="app-nav__link{% if ep == 'networking_home' %} is-active{% endif %}">Обзор</a>
+  <a href="{{ url_for('networking_map') }}" class="app-nav__link{% if ep == 'networking_map' %} is-active{% endif %}">Карта</a>
+  <a href="{{ url_for('networking_contacts') }}" class="app-nav__link{% if ep in ('networking_contacts', 'networking_contact') %} is-active{% endif %}">Контакты</a>
+  <a href="{{ url_for('networking_meetings') }}" class="app-nav__link{% if ep in ('networking_meetings', 'networking_meeting') %} is-active{% endif %}">Встречи</a>
+  <a href="{{ url_for('networking_goals') }}" class="app-nav__link{% if ep == 'networking_goals' %} is-active{% endif %}">Цели</a>
+  <a href="{{ url_for('networking_orgs') }}" class="app-nav__link{% if ep in ('networking_orgs', 'networking_org') %} is-active{% endif %}">Организации</a>
+  <a href="{{ url_for('networking_catalogs') }}" class="app-nav__link{% if ep == 'networking_catalogs' %} is-active{% endif %}">Каталоги</a>
+  <a href="{{ url_for('networking_assistants') }}" class="app-nav__link{% if ep in ('networking_assistants', 'networking_review') %} is-active{% endif %}">Помощники</a>
+  <a href="{{ url_for('networking_settings') }}" class="app-nav__link{% if ep in ('networking_settings', 'networking_import') %} is-active{% endif %}">Настройки</a>
+  {% if nw_lock_enabled %}
+  <form method="post" action="{{ url_for('networking_lock') }}" class="inline-form nw-lock-form">
+    <button type="submit" class="btn btn--ghost btn--sm">Заблокировать</button>
+  </form>
+  {% endif %}
+</nav>

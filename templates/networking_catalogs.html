@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Каталоги — Нетворкинг{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Каталоги</h1>
+    <p class="subtitle muted">Предложения, зацепки, места, наставники</p>
+  </div>
+</header>
+<nav class="nw-toc">
+  <a href="{{ url_for('networking_catalogs', tab='offers') }}" class="{% if tab=='offers' %}is-active{% endif %}">Что могу предложить</a>
+  <a href="{{ url_for('networking_catalogs', tab='hooks') }}" class="{% if tab=='hooks' %}is-active{% endif %}">Зацепки</a>
+  <a href="{{ url_for('networking_catalogs', tab='places') }}" class="{% if tab=='places' %}is-active{% endif %}">Места и события</a>
+  <a href="{{ url_for('networking_catalogs', tab='advisors') }}" class="{% if tab=='advisors' %}is-active{% endif %}">Наставники и образцы</a>
+</nav>
+
+{% if tab == 'offers' %}
+<section class="card">
+  <form method="post" action="{{ url_for('networking_offer_create') }}" class="row-form">
+    <select name="category" class="input">{% for k,v in nw_offer_cats.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+    <input class="input" name="title" placeholder="Что могу предложить" required>
+    <input class="input input--grow" name="detail" placeholder="Детали">
+    <button class="btn btn--primary">Добавить</button>
+  </form>
+  {% for o in offers %}
+  <form method="post" action="{{ url_for('networking_offer_update', oid=o.id) }}" class="row-form">
+    <select name="category" class="input">{% for k,v in nw_offer_cats.items() %}<option value="{{ k }}"{% if o.category==k %} selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+    <input class="input" name="title" value="{{ o.title }}">
+    <input class="input input--grow" name="detail" value="{{ o.detail }}">
+    <label class="nw-check"><input type="checkbox" name="active" value="1"{% if o.active %} checked{% endif %}> вкл</label>
+    <button class="btn btn--sm btn--primary">Ок</button>
+    <button class="btn btn--sm btn--ghost" name="delete" value="1">×</button>
+  </form>
+  {% endfor %}
+</section>
+{% elif tab == 'hooks' %}
+<section class="card">
+  <form method="post" action="{{ url_for('networking_hook_create') }}" class="row-form">
+    <input class="input" name="title" placeholder="Зацепка" required>
+    <input class="input" name="detail" placeholder="Детали">
+    <input class="input" name="suitable_for" placeholder="Для кого подходит">
+    <button class="btn btn--primary">Добавить</button>
+  </form>
+  {% for h in hooks %}
+  <form method="post" action="{{ url_for('networking_hook_update', hid=h.id) }}" class="row-form">
+    <input class="input" name="title" value="{{ h.title }}">
+    <input class="input" name="detail" value="{{ h.detail }}">
+    <input class="input" name="suitable_for" value="{{ h.suitable_for }}">
+    <span class="muted">×{{ h.used_count }}</span>
+    <label class="nw-check"><input type="checkbox" name="active" value="1"{% if h.active %} checked{% endif %}> вкл</label>
+    <button class="btn btn--sm btn--primary">Ок</button>
+    <button class="btn btn--sm btn--ghost" name="delete" value="1">×</button>
+  </form>
+  {% endfor %}
+</section>
+{% elif tab == 'places' %}
+{% for p in places %}
+<section class="card">
+  <form method="post" action="{{ url_for('networking_place_update', pid=p.id) }}" class="row-form">
+    <input class="input" name="title" value="{{ p.title }}">
+    <select name="kind" class="input">{% for k,v in nw_place_kinds.items() %}<option value="{{ k }}"{% if p.kind==k %} selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+    <input class="input" name="notes" value="{{ p.notes }}">
+    <span class="muted">эффективность {{ p.efficiency }} ({{ p.visit_count }} визитов)</span>
+    <button class="btn btn--sm btn--primary">Ок</button>
+    <button class="btn btn--sm btn--ghost" name="delete" value="1">×</button>
+  </form>
+  <ul class="nw-list">
+    {% for v in p.visits %}
+    <li class="nw-list__row">
+      <span>{{ v.visited_at }} · контактов {{ v.contacts_made }} · полезных {{ v.useful_contacts }} · {{ v.note }}</span>
+      <form method="post" action="{{ url_for('networking_place_visit_delete', vid=v.id) }}"><button class="btn btn--xs btn--ghost">×</button></form>
+    </li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="{{ url_for('networking_place_visit_add', pid=p.id) }}" class="row-form">
+    <input class="input" type="date" name="visited_at">
+    <input class="input" type="number" name="contacts_made" placeholder="контактов" value="0">
+    <input class="input" type="number" name="useful_contacts" placeholder="полезных" value="0">
+    <input class="input" name="note" placeholder="заметка">
+    <button class="btn btn--sm btn--primary">Визит</button>
+  </form>
+</section>
+{% endfor %}
+<section class="card">
+  <form method="post" action="{{ url_for('networking_place_create') }}" class="row-form">
+    <input class="input" name="title" placeholder="Место или событие" required>
+    <select name="kind" class="input">{% for k,v in nw_place_kinds.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+    <input class="input" name="notes" placeholder="Заметки">
+    <button class="btn btn--primary">Добавить место</button>
+  </form>
+</section>
+{% else %}
+<section class="card">
+  <p class="muted">Хорошо иметь двух тренеров.</p>
+  <form method="post" action="{{ url_for('networking_advisor_create') }}" class="row-form">
+    <select name="contact_id" class="input"><option value="">Из картотеки</option>{% for c in contacts %}<option value="{{ c.id }}">{{ c.display_name }}</option>{% endfor %}</select>
+    <input class="input" name="external_name" placeholder="Или имя">
+    <select name="role" class="input">{% for k,v in nw_advisor_roles.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+    <input class="input" name="focus" placeholder="Фокус">
+    <button class="btn btn--primary">Добавить</button>
+  </form>
+  {% for a in advisors %}
+  <form method="post" action="{{ url_for('networking_advisor_update', aid=a.id) }}" class="row-form">
+    <strong>{{ a.display_name or a.external_name }}</strong>
+    <select name="role" class="input">{% for k,v in nw_advisor_roles.items() %}<option value="{{ k }}"{% if a.role==k %} selected{% endif %}>{{ v }}</option>{% endfor %}</select>
+    <input class="input" name="focus" value="{{ a.focus }}">
+    <input class="input" name="note" value="{{ a.note }}">
+    <button class="btn btn--sm btn--primary">Ок</button>
+    <button class="btn btn--sm btn--ghost" name="delete" value="1">×</button>
+  </form>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+{% endblock %}

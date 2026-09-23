@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Импорт — Нетворкинг{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Импорт контактов</h1>
+    <p class="subtitle muted">CSV (заголовки в первой строке) или vCard 3/4. Дубли по имени и телефону/почте.</p>
+  </div>
+</header>
+
+<section class="card">
+  <h2 class="card-title">Шаблоны CSV</h2>
+  <p class="muted" style="margin-top:0">
+    Разделитель <code>;</code>, кодировка UTF-8. Колонки: ФИО, Имя, Фамилия, Телефон, Почта, Компания, Должность, Город, ДР, Теги, Заметки.
+  </p>
+  <div class="nw-header-actions">
+    <a class="btn btn--ghost" href="{{ url_for('networking_import_template') }}">Скачать пустой шаблон</a>
+    {% if contacts_count %}
+    <a class="btn btn--ghost" href="{{ url_for('networking_import_template_filled') }}">Скачать с данными из БД ({{ contacts_count }})</a>
+    {% else %}
+    <button type="button" class="btn btn--ghost" disabled title="В базе пока нет контактов">Скачать с данными из БД</button>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card">
+  <form id="nw-import-form" class="stack-form">
+    <input type="file" name="file" accept=".csv,.vcf,text/csv,text/vcard" class="input" required>
+    <button class="btn btn--primary" type="submit">Предпросмотр</button>
+  </form>
+</section>
+<section class="card" id="nw-import-preview" hidden>
+  <h2 class="card-title">Сопоставление и дедупликация</h2>
+  <div id="nw-import-map"></div>
+  <div class="nw-table-wrap" id="nw-import-table"></div>
+  <button type="button" class="btn btn--primary" id="nw-import-commit">Импортировать</button>
+  <p id="nw-import-result" class="muted"></p>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  window.NW_IMPORT = {
+    preview: {{ url_for('networking_import_preview')|tojson }},
+    commit: {{ url_for('networking_import_commit')|tojson }}
+  };
+</script>
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+{% endblock %}

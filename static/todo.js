@@ -1,8 +1,6 @@
 (function () {
-  const board = document.getElementById("kanban-board");
-  if (!board) return;
-
-  const urls = window.TODO_URLS || {};
+  if (!window.TODO_URLS) return;
+  const urls = window.TODO_URLS;
   let draggedCard = null;
 
   function openModal(id) {
@@ -25,23 +23,24 @@
     }
   }
 
-  document.querySelectorAll("[data-open-modal]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const modalId = btn.dataset.openModal;
-      if (modalId === "modal-new-card") {
-        const columnId = btn.dataset.columnId;
-        const form = document.getElementById("form-new-card");
-        if (form && columnId) {
-          form.action = (urls.createCard || "").replace("__ID__", columnId);
-          form.reset();
-        }
+  document.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-open-modal]");
+    if (!btn) return;
+    const modalId = btn.dataset.openModal;
+    if (modalId === "modal-new-card") {
+      const columnId = btn.dataset.columnId;
+      const form = document.getElementById("form-new-card");
+      if (form && columnId) {
+        form.action = (urls.createCard || "").replace("__ID__", columnId);
+        form.reset();
       }
-      openModal(modalId);
-    });
+    }
+    openModal(modalId);
   });
 
-  document.querySelectorAll("[data-close-modal]").forEach((el) => {
-    el.addEventListener("click", () => closeModal(el));
+  document.addEventListener("click", (event) => {
+    const el = event.target.closest("[data-close-modal]");
+    if (el) closeModal(el);
   });
 
   function openEditColumn(column) {
@@ -66,7 +65,101 @@
     }
   }
 
-  board.addEventListener("click", (event) => {
+  /* ---------- Subtask sub-boards (modal with a mini kanban per card) ---------- */
+
+  const subboardModal = document.getElementById("modal-subboard");
+  const subboardWrapper = document.getElementById("subboard-kanban-wrapper");
+  const subboardTitle = document.getElementById("subboard-card-title");
+  let currentSubboardCardId = null;
+
+  function isSubboardContext() {
+    return Boolean(subboardModal && !subboardModal.hidden);
+  }
+
+  async function refreshSubboard() {
+    if (!currentSubboardCardId || !subboardWrapper) return;
+    const url = (urls.subboard || "").replace("__ID__", currentSubboardCardId);
+    try {
+      const res = await fetch(url, { headers: { "X-Requested-With": "fetch" } });
+      if (!res.ok) throw new Error("failed");
+      subboardWrapper.innerHTML = await res.text();
+    } catch (_) {
+      subboardWrapper.innerHTML = '<p class="muted">Не удалось загрузить подзадачи.</p>';
+    }
+  }
+
+  async function openSubboard(cardId, cardTitle) {
+    currentSubboardCardId = cardId;
+    if (subboardTitle) subboardTitle.textContent = cardTitle || "";
+    if (subboardWrapper) subboardWrapper.innerHTML = '<p class="muted">Загрузка…</p>';
+    openModal("modal-subboard");
+    await refreshSubboard();
+  }
+
+  document.addEventListener("click", (event) => {
+    const btn = event.target.closest(".js-open-subboard");
+    if (!btn) return;
+    openSubboard(btn.dataset.cardId, btn.dataset.cardTitle || "");
+  });
+
+  const newSubcolumnForm = document.getElementById("form-new-subcolumn");
+  if (newSubcolumnForm) {
+    newSubcolumnForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (!currentSubboardCardId) return;
+      const input = newSubcolumnForm.elements.title;
+      const title = (input.value || "").trim();
+      if (!title) return;
+      const url = (urls.createSubcolumn || "").replace("__ID__", currentSubboardCardId);
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "X-Requested-With": "fetch",
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: "title=" + encodeURIComponent(title),
+        });
+        if (!res.ok) throw new Error("failed");
+        input.value = "";
+        await refreshSubboard();
+      } catch (_) {
+        window.alert("Не удалось добавить колонку");
+      }
+    });
+  }
+
+  /* ---------- Shared modals: new/edit card, edit column ---------- */
+  /* When the subtasks modal is open, submitting these must refresh the
+     sub-board in place instead of navigating the whole page away. */
+
+  async function submitViaFetch(form) {
+    const res = await fetch(form.action, {
+      method: form.method || "POST",
+      headers: { "X-Requested-With": "fetch" },
+      body: new FormData(form),
+    });
+    if (!res.ok) throw new Error("failed");
+  }
+
+  ["form-new-card", "form-edit-card", "form-edit-column"].forEach((id) => {
+    const form = document.getElementById(id);
+    if (!form) return;
+    form.addEventListener("submit", (event) => {
+      if (!isSubboardContext()) return; // let it submit/navigate normally
+      event.preventDefault();
+      submitViaFetch(form)
+        .then(() => {
+          closeModal(form);
+          refreshSubboard();
+        })
+        .catch(() => window.alert("Не удалось сохранить"));
+    });
+  });
+
+  /* ---------- Inline forms duplicated in both the main board and sub-boards ---------- */
+
+  document.addEventListener("click", (event) => {
     const editBtn = event.target.closest(".js-edit-card");
     if (editBtn) {
       const card = editBtn.closest(".kanban-card");
@@ -88,26 +181,50 @@
     }
   });
 
-  board.addEventListener("submit", (event) => {
-    const form = event.target.closest(".js-collapse-column");
-    if (!form) return;
-    event.preventDefault();
-    const column = form.closest(".kanban-column");
-    if (!column) return;
-    const nextCollapsed = !column.classList.contains("is-collapsed");
-    setColumnCollapsed(column, nextCollapsed);
-    const collapseUrl = (urls.collapseColumn || "").replace("__ID__", column.dataset.columnId);
-    fetch(collapseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "fetch",
-      },
-      body: JSON.stringify({ collapsed: nextCollapsed }),
-    }).catch(() => {
-      setColumnCollapsed(column, !nextCollapsed);
-    });
+  document.addEventListener("submit", (event) => {
+    const collapseForm = event.target.closest(".js-collapse-column");
+    if (collapseForm) {
+      event.preventDefault();
+      const column = collapseForm.closest(".kanban-column");
+      if (!column) return;
+      const nextCollapsed = !column.classList.contains("is-collapsed");
+      setColumnCollapsed(column, nextCollapsed);
+      const collapseUrl = (urls.collapseColumn || "").replace("__ID__", column.dataset.columnId);
+      fetch(collapseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "fetch",
+        },
+        body: JSON.stringify({ collapsed: nextCollapsed }),
+      }).catch(() => {
+        setColumnCollapsed(column, !nextCollapsed);
+      });
+      return;
+    }
+
+    const deleteCardForm = event.target.closest(".js-delete-card-form");
+    if (deleteCardForm) {
+      if (!isSubboardContext()) return;
+      event.preventDefault();
+      submitViaFetch(deleteCardForm)
+        .then(refreshSubboard)
+        .catch(() => window.alert("Не удалось удалить задачу"));
+      return;
+    }
+
+    const deleteColumnForm = event.target.closest(".kanban-column__delete");
+    if (deleteColumnForm) {
+      if (!isSubboardContext()) return;
+      event.preventDefault();
+      submitViaFetch(deleteColumnForm)
+        .then(refreshSubboard)
+        .catch(() => window.alert("Не удалось удалить колонку"));
+    }
   });
+
+  /* ---------- Drag & drop: fully delegated so it works in dynamically
+     inserted sub-board content with zero extra wiring ---------- */
 
   function syncEmptyState(zone) {
     if (!zone) return;
@@ -122,8 +239,8 @@
   }
 
   function hideIndicators() {
-    board.querySelectorAll(".kanban-drop-indicator").forEach((el) => el.remove());
-    board.querySelectorAll(".kanban-column.drag-over").forEach((el) => {
+    document.querySelectorAll(".kanban-drop-indicator").forEach((el) => el.remove());
+    document.querySelectorAll(".kanban-column.drag-over").forEach((el) => {
       el.classList.remove("drag-over");
     });
   }
@@ -210,23 +327,29 @@
     });
   }
 
-  board.querySelectorAll(".kanban-card").forEach((card) => {
-    card.addEventListener("dragstart", (event) => {
-      draggedCard = card;
-      card.classList.add("is-dragging");
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", card.dataset.cardId || "");
-    });
-    card.addEventListener("dragend", () => {
-      card.classList.remove("is-dragging");
-      hideIndicators();
-      board.querySelectorAll(".kanban-column__cards").forEach(syncEmptyState);
-      draggedCard = null;
-    });
+  document.addEventListener("dragstart", (event) => {
+    const card = event.target.closest(".kanban-card");
+    if (!card) return;
+    draggedCard = card;
+    card.classList.add("is-dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", card.dataset.cardId || "");
   });
 
-  board.querySelectorAll("[data-drop-zone]").forEach((zone) => {
-    zone.addEventListener("dragover", (event) => {
+  document.addEventListener("dragend", (event) => {
+    const card = event.target.closest(".kanban-card");
+    if (!card) return;
+    card.classList.remove("is-dragging");
+    hideIndicators();
+    document.querySelectorAll(".kanban-column__cards").forEach(syncEmptyState);
+    draggedCard = null;
+  });
+
+  document.addEventListener(
+    "dragover",
+    (event) => {
+      const zone = event.target.closest("[data-drop-zone]");
+      if (!zone) return;
       event.preventDefault();
       if (!draggedCard) return;
       const column = zone.closest(".kanban-column");
@@ -236,30 +359,59 @@
         return;
       }
       showIndicator(zone, event.clientY);
-    });
-    zone.addEventListener("dragleave", (event) => {
-      if (!zone.contains(event.relatedTarget)) {
-        hideIndicators();
-      }
-    });
-    zone.addEventListener("drop", (event) => {
-      event.preventDefault();
-      dropOnZone(zone, event.clientY);
-    });
+    },
+    { passive: false }
+  );
+
+  document.addEventListener("dragleave", (event) => {
+    const zone = event.target.closest("[data-drop-zone]");
+    if (!zone) return;
+    if (!zone.contains(event.relatedTarget)) {
+      hideIndicators();
+    }
   });
 
-  board.querySelectorAll(".kanban-column").forEach((column) => {
-    column.addEventListener("dragover", (event) => {
-      if (!column.classList.contains("is-collapsed")) return;
+  document.addEventListener("drop", (event) => {
+    const zone = event.target.closest("[data-drop-zone]");
+    if (!zone) return;
+    event.preventDefault();
+    dropOnZone(zone, event.clientY);
+  });
+
+  document.addEventListener(
+    "dragover",
+    (event) => {
+      const column = event.target.closest(".kanban-column.is-collapsed");
+      if (!column) return;
       event.preventDefault();
       if (!draggedCard) return;
       hideIndicators();
       column.classList.add("drag-over");
-    });
-    column.addEventListener("drop", (event) => {
-      if (!column.classList.contains("is-collapsed")) return;
-      event.preventDefault();
-      dropOnZone(column.querySelector("[data-drop-zone]"), event.clientY);
-    });
+    },
+    { passive: false }
+  );
+
+  /* ---------- Highlight a just-created card after the page reload ---------- */
+
+  (function highlightNewCard() {
+    const params = new URLSearchParams(window.location.search);
+    const newCardId = params.get("new_card");
+    if (!newCardId) return;
+    params.delete("new_card");
+    const qs = params.toString();
+    const cleanUrl = window.location.pathname + (qs ? `?${qs}` : "");
+    window.history.replaceState({}, "", cleanUrl);
+    const card = document.querySelector(`.kanban-card[data-card-id="${newCardId}"]`);
+    if (!card) return;
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.classList.add("is-new-highlight");
+    window.setTimeout(() => card.classList.remove("is-new-highlight"), 2600);
+  })();
+
+  document.addEventListener("drop", (event) => {
+    const column = event.target.closest(".kanban-column.is-collapsed");
+    if (!column) return;
+    event.preventDefault();
+    dropOnZone(column.querySelector("[data-drop-zone]"), event.clientY);
   });
 })();

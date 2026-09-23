@@ -1,4 +1,6 @@
 timekeeper.db
+static/nw_photos/*
+!static/nw_photos/.gitkeep
 *.db-journal
 .venv/
 venv/
@@ -16,3 +18,4 @@ Thumbs.db
 logos/
 static/timer_sounds/custom/*
 !static/timer_sounds/custom/.gitkeep
+/IDEA

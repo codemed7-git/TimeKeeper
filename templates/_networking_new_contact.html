@@ -1,0 +1,44 @@
+<div class="modal" id="modal-nw-contact" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog" role="dialog" aria-labelledby="modal-nw-contact-title">
+    <button type="button" class="modal__close" data-close-modal aria-label="Закрыть">&times;</button>
+    <h2 class="modal__title" id="modal-nw-contact-title">Новый контакт</h2>
+    <form method="post" action="{{ url_for('networking_contact_create') }}" class="stack-form">
+      <label class="field">
+        <span class="field-label">Имя</span>
+        <input type="text" name="display_name" class="input" required autofocus>
+      </label>
+      <label class="field">
+        <span class="field-label">Круг</span>
+        <select name="circle" class="input">
+          {% for k, v in nw_circles.items() %}
+          <option value="{{ k }}"{% if k == 'development' %} selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% if sectors is defined and sectors %}
+      <label class="field">
+        <span class="field-label">Сектор карты</span>
+        <select name="sector_id" class="input">
+          <option value="">Прочее</option>
+          {% for s in sectors %}
+          <option value="{{ s.id }}">{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+      <label class="field">
+        <span class="field-label">Список поддержания связи</span>
+        <select name="priority_list" class="input">
+          {% for k, v in nw_lists.items() %}
+          <option value="{{ k }}"{% if k == '3' %} selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-close-modal>Отмена</button>
+        <button type="submit" class="btn btn--primary">Создать</button>
+      </div>
+    </form>
+  </div>
+</div>

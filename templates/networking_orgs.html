@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Организации — Нетворкинг{% endblock %}
+{% block body %}
+<header class="header">
+  <div>
+    <h1 class="title">Организации</h1>
+    <p class="subtitle muted">Расстановка власти</p>
+  </div>
+  <button type="button" class="btn btn--primary" data-open-modal="modal-nw-org">Новая организация</button>
+</header>
+<div class="todo-projects-grid">
+  {% for o in orgs %}
+  <article class="card">
+    <h2 class="card-title"><a class="inline-link" href="{{ url_for('networking_org', org_id=o.id) }}">{{ o.name }}</a></h2>
+    <p class="muted">{{ nw_org_kinds.get(o.kind, o.kind) }} · {{ nw_decision.get(o.decision_style, '—') }} · {{ o.member_count }} уч.</p>
+    {% if o.my_goal %}<p>{{ o.my_goal }}</p>{% endif %}
+  </article>
+  {% else %}
+  <p class="muted">Организаций нет.</p>
+  {% endfor %}
+</div>
+<div class="modal" id="modal-nw-org" hidden>
+  <div class="modal__backdrop" data-close-modal></div>
+  <div class="modal__dialog">
+    <button type="button" class="modal__close" data-close-modal>&times;</button>
+    <h2 class="modal__title">Организация</h2>
+    <form method="post" action="{{ url_for('networking_org_create') }}" class="stack-form">
+      <label class="field">Название <input class="input" name="name" required></label>
+      <label class="field">Тип
+        <select name="kind" class="input">{% for k,v in nw_org_kinds.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      </label>
+      <label class="field">Стиль решений
+        <select name="decision_style" class="input">{% for k,v in nw_decision.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      </label>
+      <label class="field">Моя цель <textarea class="input" name="my_goal" rows="2"></textarea></label>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" data-close-modal>Отмена</button>
+        <button class="btn btn--primary" type="submit">Создать</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='networking.js') }}"></script>
+{% endblock %}
