@@ -8344,7 +8344,7 @@ def main():
     init_db()
     debug = os.environ.get("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
     host = os.environ.get("HOST", "127.0.0.1")
-    port = int(os.environ.get("PORT", "7878"))
+    port = int(os.environ.get("PORT", "7777"))
     app.run(debug=debug, host=host, port=port)
 
 
